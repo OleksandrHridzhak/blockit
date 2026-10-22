@@ -9,6 +9,7 @@ interface NativeBlockitBridge {
   setAppEnabled(appId: string, enabled: boolean): void;
   setWidgetSnapshot(json: string): void;
   getWidgetSnapshot(): string | null;
+  consumePendingInterceptApp(): string | null;
 }
 
 const nativeModule = requireOptionalNativeModule<NativeBlockitBridge>('BlockitBridge');
@@ -83,6 +84,13 @@ export const BlockitBridge = {
       return nativeModule.getWidgetSnapshot();
     }
     return widgetSnapshotFallback;
+  },
+
+  consumePendingInterceptApp(): string | null {
+    if (nativeModule) {
+      return nativeModule.consumePendingInterceptApp();
+    }
+    return null;
   },
 
   __resetFallbackForTests(): void {

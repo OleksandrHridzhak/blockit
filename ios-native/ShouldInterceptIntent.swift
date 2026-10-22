@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import UIKit
 
 private let kStorePrefix = "blockit.v1."
 
@@ -29,10 +30,54 @@ enum GuardedAppEnum: String, AppEnum {
 }
 
 @available(iOS 16.0, *)
+private func shouldInterceptAppId(_ appId: String) -> Bool {
+  let defaults = UserDefaults.standard
+  let enabledKey = "\(kStorePrefix)enabled.\(appId)"
+  if defaults.object(forKey: enabledKey) != nil && !defaults.bool(forKey: enabledKey) {
+    return false
+  }
+  let bypassUntilMs = defaults.double(forKey: "\(kStorePrefix)bypass.\(appId)")
+  let nowMs = Date().timeIntervalSince1970 * 1000.0
+  if bypassUntilMs > nowMs {
+    return false
+  }
+  return true
+}
+
+/// Primary one-step action for Shortcuts Automation:
+/// When "Instagram is opened", run this action. Because `openAppWhenRun = true`,
+/// iOS immediately brings Blockit to the foreground and routes straight to `/intervene?app=instagram`.
+@available(iOS 16.0, *)
 struct ShouldInterceptIntent: AppIntent {
-  static var title: LocalizedStringResource = "Should Intercept App"
+  static var title: LocalizedStringResource = "Intercept App with Blockit"
   static var description = IntentDescription(
-    "Returns true when Blockit should pause the user before opening the selected app, or false when an active bypass window allows immediate access."
+    "One-step action for Shortcuts Automations: opens Blockit to pause the selected app."
+  )
+  // Must be true so iOS brings Blockit to the foreground when triggered from Shortcuts!
+  static var openAppWhenRun: Bool = true
+
+  @Parameter(title: "App")
+  var app: GuardedAppEnum
+
+  @MainActor
+  func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+    let appId = app.rawValue
+    let defaults = UserDefaults.standard
+
+    defaults.set(appId, forKey: "\(kStorePrefix)pending.app")
+    defaults.set(Date().timeIntervalSince1970 * 1000.0, forKey: "\(kStorePrefix)pending.ts")
+
+    return .result(value: shouldInterceptAppId(appId))
+  }
+}
+
+/// Optional silent background check for users who build a 2-step "If -> Open URL" automation
+/// to avoid any app-switch during an active bypass window.
+@available(iOS 16.0, *)
+struct CheckBypassIntent: AppIntent {
+  static var title: LocalizedStringResource = "Check If App Should Be Paused (Silent)"
+  static var description = IntentDescription(
+    "Silent background check: returns true if the app should be paused, or false if an active bypass window is running."
   )
   static var openAppWhenRun: Bool = false
 
@@ -40,23 +85,7 @@ struct ShouldInterceptIntent: AppIntent {
   var app: GuardedAppEnum
 
   func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
-    let appId = app.rawValue
-    let defaults = UserDefaults.standard
-
-    // If explicitly disabled in Blockit, do not intercept
-    let enabledKey = "\(kStorePrefix)enabled.\(appId)"
-    if defaults.object(forKey: enabledKey) != nil && !defaults.bool(forKey: enabledKey) {
-      return .result(value: false)
-    }
-
-    let bypassUntilMs = defaults.double(forKey: "\(kStorePrefix)bypass.\(appId)")
-    let nowMs = Date().timeIntervalSince1970 * 1000.0
-
-    if bypassUntilMs > nowMs {
-      return .result(value: false)
-    }
-
-    return .result(value: true)
+    return .result(value: shouldInterceptAppId(app.rawValue))
   }
 }
 
@@ -90,10 +119,10 @@ struct BlockitShortcutsProvider: AppShortcutsProvider {
     AppShortcut(
       intent: ShouldInterceptIntent(),
       phrases: [
-        "Check if \(\.$app) should be intercepted in \(.applicationName)",
-        "Should \(.applicationName) pause \(\.$app)",
+        "Intercept \(\.$app) with \(.applicationName)",
+        "Pause \(\.$app) in \(.applicationName)",
       ],
-      shortTitle: "Should Intercept App",
+      shortTitle: "Intercept App",
       systemImageName: "hand.raised.fill"
     )
     AppShortcut(

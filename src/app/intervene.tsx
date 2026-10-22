@@ -61,6 +61,16 @@ function InterveneSession({ appId }: { appId: string }) {
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialDecision.kind === 'allow') {
+      openGuardedTargetApp(appId).finally(() => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/');
+        }
+      });
+      return;
+    }
     if (initialDecision.kind === 'intervene') {
       logInterventionStarted(appId, initialDecision.durationSec);
     }

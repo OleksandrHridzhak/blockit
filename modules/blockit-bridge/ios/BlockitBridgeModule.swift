@@ -41,5 +41,21 @@ public class BlockitBridgeModule: Module {
     Function("getWidgetSnapshot") { () -> String? in
       UserDefaults.standard.string(forKey: "\(kStorePrefix)widget.snapshot")
     }
+
+    Function("consumePendingInterceptApp") { () -> String? in
+      let defaults = UserDefaults.standard
+      guard let appId = defaults.string(forKey: "\(kStorePrefix)pending.app") else {
+        return nil
+      }
+      let ts = defaults.double(forKey: "\(kStorePrefix)pending.ts")
+      defaults.removeObject(forKey: "\(kStorePrefix)pending.app")
+      defaults.removeObject(forKey: "\(kStorePrefix)pending.ts")
+      let nowMs = Date().timeIntervalSince1970 * 1000.0
+      // Only honor pending intercepts triggered within the last 15 seconds
+      if nowMs - ts <= 15_000 {
+        return appId
+      }
+      return nil
+    }
   }
 }
