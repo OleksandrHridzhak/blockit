@@ -1,0 +1,42 @@
+{
+  "name": "Blockit Official Source",
+  "identifier": "com.hridzhak.blockit.source",
+  "subtitle": "Automatic builds of Blockit (one sec clone) from GitHub Actions",
+  "description": "Add this source to SideStore / AltStore (installed via iLoader) to automatically receive the latest Blockit builds.",
+  "apps": [
+    {
+      "name": "Blockit",
+      "bundleIdentifier": "com.hridzhak.blockit",
+      "developerName": "Oleksandr Hridzhak",
+      "subtitle": "Mindful pause before distracting apps",
+      "localizedDescription": "Blockit intercepts distracting apps via iOS Shortcuts and adds a mindful breathing/countdown pause.",
+      "iconURL": "https://raw.githubusercontent.com/OleksandrHridzhak/blockit/main/assets/images/icon.png",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "date": "2026-10-22T11:40:00Z",
+          "localizedDescription": "Latest automated build from main branch (1-step Shortcuts automation + UK/EN localization).",
+          "downloadURL": "https://github.com/OleksandrHridzhak/blockit/releases/download/latest/Blockit-device-release-unsigned.ipa",
+          "size": 17897987
+        }
+      ]
+    },
+    {
+      "name": "Blockit Dev (Live Reload)",
+      "bundleIdentifier": "com.hridzhak.blockit",
+      "developerName": "Oleksandr Hridzhak",
+      "subtitle": "Instant Wi-Fi hot-reload from Windows PC",
+      "localizedDescription": "Install once via SideStore/iLoader, then connect to Metro on your Windows PC for 1-second live updates without reinstalling IPAs.",
+      "iconURL": "https://raw.githubusercontent.com/OleksandrHridzhak/blockit/main/assets/images/icon.png",
+      "versions": [
+        {
+          "version": "0.1.0",
+          "date": "2026-10-22T11:40:00Z",
+          "localizedDescription": "Development client with native BlockitBridge and ShouldInterceptIntent.",
+          "downloadURL": "https://github.com/OleksandrHridzhak/blockit/releases/download/latest/Blockit-device-debug-unsigned.ipa",
+          "size": 17897987
+        }
+      ]
+    }
+  ]
+}
