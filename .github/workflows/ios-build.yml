@@ -17,6 +17,8 @@ jobs:
     name: ${{ matrix.variant }}
     runs-on: macos-latest
     timeout-minutes: 60
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -115,3 +117,12 @@ jobs:
             build.log
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Publish latest IPA to GitHub Release (fixed URL for Sideloadly)
+        if: success() && github.ref == 'refs/heads/main' && matrix.sdk == 'iphoneos'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IPA_FILE="out/Blockit-${{ matrix.variant }}-unsigned.ipa"
+          gh release view latest >/dev/null 2>&1 || gh release create latest --title "Latest Blockit iOS Builds" --notes "Automatically updated unsigned IPAs from main. Fixed URLs for Sideloadly."
+          gh release upload latest "$IPA_FILE" --clobber
