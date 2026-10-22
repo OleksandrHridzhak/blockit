@@ -1,0 +1,10 @@
+appId: com.hridzhak.blockit
+---
+- launchApp
+- assertVisible: "Blockit"
+- assertVisible: "Guarded Apps"
+- openLink: "blockit://intervene?app=instagram"
+- assertVisible: "You are about to open Instagram"
+- tapOn:
+    id: "intervene-dismiss"
+- assertVisible: "Guarded Apps"

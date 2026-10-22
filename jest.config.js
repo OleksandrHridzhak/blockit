@@ -2,11 +2,11 @@
 module.exports = {
   projects: [
     {
-      // Pure TS logic (src/core): plain node env, fast, no RN mocks.
+      // Pure TS logic (src/core & src/storage): plain node env, fast, no RN mocks.
       displayName: 'core',
       preset: 'jest-expo',
       testEnvironment: 'node',
-      testMatch: ['<rootDir>/src/core/**/*.test.ts'],
+      testMatch: ['<rootDir>/src/core/**/*.test.ts', '<rootDir>/src/storage/**/*.test.ts'],
     },
     {
       // Components & screens with React Native Testing Library.

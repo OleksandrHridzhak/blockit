@@ -1,180 +1,214 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { useCallback, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { AnalyticsSummary, computeAnalyticsSummary } from '@/core/analytics';
+import { getAppDisplayName } from '@/core/catalog';
+import { getHistoryEvents, HistoryEvent } from '@/storage/repository';
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
-  const theme = useTheme();
+const SETUP_STEPS = [
+  '1. Open the Apple Shortcuts app on your iPhone → Automation tab → tap "+".',
+  '2. Choose "App" → select Instagram (or another guarded app) → check "Is Opened" and "Run Immediately".',
+  '3. Add action: Blockit → "Should Intercept App" (select Instagram).',
+  '4. Add an "If" block: If Should Intercept App is true → "Open URLs" with blockit://intervene?app=instagram.',
+];
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
+export default function ExploreScreen() {
+  const [data, setData] = useState<{
+    events: HistoryEvent[];
+    summary: AnalyticsSummary;
+  }>(() => {
+    const events = getHistoryEvents();
+    return {
+      events,
+      summary: computeAnalyticsSummary(events, Date.now()),
+    };
   });
 
+  useFocusEffect(
+    useCallback(() => {
+      const events = getHistoryEvents();
+      setData({
+        events,
+        summary: computeAnalyticsSummary(events, Date.now()),
+      });
+    }, [])
+  );
+
+  const { events, summary } = data;
+  const maxDayCount = Math.max(
+    1,
+    ...summary.last7Days.map((d) => d.dismissed + d.continued)
+  );
+
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
+    <ThemedView style={styles.container}>
+      <SafeAreaView style={styles.safeArea}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ThemedText type="title">Insights & Setup</ThemedText>
+
+          <View style={styles.kpiRow}>
+            <View style={styles.kpiCard}>
+              <ThemedText type="subtitle" testID="stats-mindful-rate">
+                {summary.mindfulRatePercent}%
+              </ThemedText>
+              <ThemedText type="small" style={styles.muted}>
+                Mindful rate
+              </ThemedText>
+            </View>
+            <View style={styles.kpiCard}>
+              <ThemedText type="subtitle" testID="stats-saved-min">
+                {summary.estimatedSavedMinutes}m
+              </ThemedText>
+              <ThemedText type="small" style={styles.muted}>
+                Time saved
+              </ThemedText>
+            </View>
+            <View style={styles.kpiCard}>
+              <ThemedText type="subtitle">{summary.totalDismissed}</ThemedText>
+              <ThemedText type="small" style={styles.muted}>
+                Total exits
+              </ThemedText>
+            </View>
+          </View>
+
+          <View style={styles.card}>
+            <ThemedText type="smallBold">Last 7 Days (Mindful exits vs Opens)</ThemedText>
+            <View style={styles.chartRow}>
+              {summary.last7Days.map((bucket) => {
+                const total = bucket.dismissed + bucket.continued;
+                const heightPct = Math.max(8, Math.round((total / maxDayCount) * 100));
+                return (
+                  <View key={bucket.dayKey} style={styles.chartCol}>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { height: `${heightPct}%` }]} />
+                    </View>
+                    <ThemedText type="small" style={styles.muted}>
+                      {bucket.label}
+                    </ThemedText>
+                    <ThemedText type="small">
+                      {bucket.dismissed}/{total}
+                    </ThemedText>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.card}>
+            <ThemedText type="smallBold">iOS Shortcuts Automation (No-flicker mode)</ThemedText>
+            {SETUP_STEPS.map((step) => (
+              <ThemedText key={step} type="small" style={styles.step}>
+                {step}
+              </ThemedText>
+            ))}
+            <Pressable
+              testID="open-shortcuts-app"
+              onPress={() => Linking.openURL('shortcuts://')}
+              style={styles.button}>
+              <ThemedText type="smallBold" style={styles.buttonText}>
+                Open Apple Shortcuts
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <ThemedText type="smallBold" style={styles.sectionTitle}>
+            Recent Interceptions ({events.length})
           </ThemedText>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
-
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
+          {events.length === 0 ? (
+            <View style={styles.card}>
+              <ThemedText type="small" style={styles.muted}>
+                No activity recorded yet. Trigger a pause from the Home tab or via
+                blockit://intervene?app=instagram.
               </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
-
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+            </View>
+          ) : (
+            events.slice(0, 25).map((ev) => (
+              <View key={ev.id} style={styles.eventRow}>
+                <View style={styles.eventMeta}>
+                  <ThemedText type="smallBold">{getAppDisplayName(ev.appId)}</ThemedText>
+                  <ThemedText type="small" style={styles.muted}>
+                    {new Date(ev.timestampMs).toLocaleTimeString()}
+                  </ThemedText>
+                </View>
+                <ThemedText type="small">
+                  {ev.outcome === 'dismissed'
+                    ? 'Closed mindfully'
+                    : ev.outcome === 'continued'
+                      ? `Opened (${ev.bypassMinutes ?? 5}m bypass)`
+                      : 'Paused'}
+                </ThemedText>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 100, gap: 14 },
+  kpiRow: { flexDirection: 'row', gap: 10 },
+  kpiCard: {
     flex: 1,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(128,128,128,0.1)',
+    gap: 4,
   },
-  contentContainer: {
+  card: {
+    padding: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(128,128,128,0.08)',
+    gap: 10,
+  },
+  chartRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 120,
+    paddingTop: 10,
   },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
+  chartCol: { flex: 1, alignItems: 'center', gap: 4 },
+  barTrack: {
+    width: 16,
+    flex: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(128,128,128,0.18)',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
+  barFill: {
     width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
+    backgroundColor: '#208AEF',
+    borderRadius: 8,
   },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+  step: { opacity: 0.85 },
+  button: {
+    marginTop: 6,
+    backgroundColor: '#208AEF',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
   },
+  buttonText: { color: '#FFFFFF' },
+  sectionTitle: { marginTop: 6 },
+  muted: { opacity: 0.7 },
+  eventRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(128,128,128,0.06)',
+  },
+  eventMeta: { gap: 2 },
 });

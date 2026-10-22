@@ -73,11 +73,12 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             | tee build.log | xcbeautify --renderer github-actions
 
-      - name: Locate .app
+      - name: Locate .app and verify AppIntents metadata
         id: app
         run: |
           APP="build/Build/Products/${{ matrix.configuration }}-${{ matrix.sdk }}/Blockit.app"
           test -d "$APP"
+          test -d "$APP/Metadata.appintents"
           echo "path=$APP" >> "$GITHUB_OUTPUT"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP/Info.plist"
 
