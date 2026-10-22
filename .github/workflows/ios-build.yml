@@ -1,0 +1,116 @@
+name: ios-build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'spec/**']
+  pull_request:
+    paths-ignore: ['**.md', 'spec/**']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.variant }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Dev client: loads JS from Metro running on Windows (same Wi-Fi). Install via Sideloadly.
+          - variant: device-debug
+            configuration: Debug
+            sdk: iphoneos
+            destination: generic/platform=iOS
+          # Standalone build with embedded JS bundle. Install via Sideloadly.
+          - variant: device-release
+            configuration: Release
+            sdk: iphoneos
+            destination: generic/platform=iOS
+          # Simulator build: smoke-run + screenshots (later: Maestro E2E).
+          - variant: simulator
+            configuration: Release
+            sdk: iphonesimulator
+            destination: generic/platform=iOS Simulator
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Xcode info
+        run: xcodebuild -version && xcrun simctl list runtimes
+
+      - run: npm ci
+
+      - name: Expo prebuild (generate ios/)
+        run: npx expo prebuild -p ios --clean --no-install
+
+      - uses: actions/cache@v4
+        with:
+          path: ios/Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json', 'plugins/**', 'modules/**') }}
+
+      - name: Pod install
+        run: cd ios && pod install
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace ios/Blockit.xcworkspace \
+            -scheme Blockit \
+            -configuration ${{ matrix.configuration }} \
+            -sdk ${{ matrix.sdk }} \
+            -destination '${{ matrix.destination }}' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            | tee build.log | xcbeautify --renderer github-actions
+
+      - name: Locate .app
+        id: app
+        run: |
+          APP="build/Build/Products/${{ matrix.configuration }}-${{ matrix.sdk }}/Blockit.app"
+          test -d "$APP"
+          echo "path=$APP" >> "$GITHUB_OUTPUT"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP/Info.plist"
+
+      - name: Package unsigned IPA
+        if: matrix.sdk == 'iphoneos'
+        run: |
+          mkdir -p out/Payload
+          cp -R "${{ steps.app.outputs.path }}" out/Payload/
+          cd out && zip -qry "Blockit-${{ matrix.variant }}-unsigned.ipa" Payload
+
+      - name: Simulator smoke run
+        if: matrix.sdk == 'iphonesimulator'
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -m1 -E '^\s+iPhone' | grep -oE '[0-9A-F-]{36}')
+          echo "Using simulator $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "${{ steps.app.outputs.path }}"
+          mkdir -p out
+          xcrun simctl launch "$UDID" com.hridzhak.blockit
+          sleep 20
+          xcrun simctl io "$UDID" screenshot out/01-launch.png
+          xcrun simctl openurl "$UDID" "blockit://intervene?app=instagram"
+          sleep 8
+          xcrun simctl io "$UDID" screenshot out/02-deeplink.png
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blockit-${{ matrix.variant }}
+          path: |
+            out/
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
