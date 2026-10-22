@@ -31,7 +31,7 @@ function withAppIntent(config) {
     const projectName = modConfig.modRequest.projectName;
     const fileRelativePath = `${projectName}/${SWIFT_FILE_NAME}`;
 
-    IOSConfig.XcodeProjectFile.addBuildSourceFileToGroup({
+    IOSConfig.XcodeUtils.addBuildSourceFileToGroup({
       filepath: fileRelativePath,
       groupName: projectName,
       project,

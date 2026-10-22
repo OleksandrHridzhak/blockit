@@ -26,6 +26,11 @@ jobs:
         run: npm run lint
       - name: Unit tests
         run: npx jest --ci --coverage
+      - name: Verify iOS prebuild & AppIntent plugin
+        run: |
+          npx expo prebuild -p ios --clean --no-install
+          test -f ios/Blockit/ShouldInterceptIntent.swift
+          grep -q "ShouldInterceptIntent.swift" ios/Blockit.xcodeproj/project.pbxproj
       - name: Expo doctor
         run: npx expo-doctor
         continue-on-error: true
