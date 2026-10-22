@@ -9,6 +9,8 @@ import { getAppDisplayName, getCatalogApp } from '@/core/catalog';
 import { normalizeAppId } from '@/core/deeplink';
 import { decide } from '@/core/rules-engine';
 import { openGuardedTargetApp } from '@/features/intervention/open-target-app';
+import { getTranslations } from '@/i18n/strings';
+import { getUserPreferences } from '@/storage/preferences';
 import {
   getAppConfig,
   getAppUsageState,
@@ -41,10 +43,12 @@ function InterveneSession({ appId }: { appId: string }) {
     const config = getAppConfig(appId);
     const state = getAppUsageState(appId, now);
     const decision = decide({ appId }, config, state, now);
-    return { config, decision };
+    const prefs = getUserPreferences();
+    return { config, decision, prefs };
   });
 
-  const { config, decision: initialDecision } = session;
+  const { config, decision: initialDecision, prefs } = session;
+  const t = getTranslations(prefs.locale);
   const initialDuration =
     initialDecision.kind === 'intervene' ? initialDecision.durationSec : config.baseDurationSec;
   const attemptNo =
@@ -104,7 +108,7 @@ function InterveneSession({ appId }: { appId: string }) {
   };
 
   const promptText = REFLECTION_PROMPTS[(attemptNo - 1) % REFLECTION_PROMPTS.length];
-  const breathPhase = secondsLeft % 6 >= 3 ? 'Inhale slowly…' : 'Exhale gently…';
+  const breathPhase = secondsLeft % 6 >= 3 ? t.inhaleSlowly : t.exhaleGently;
 
   return (
     <ThemedView style={styles.container}>
@@ -127,22 +131,22 @@ function InterveneSession({ appId }: { appId: string }) {
             ]}>
             <ThemedText type="title" testID="intervene-timer">
               {initialDecision.kind === 'block'
-                ? 'Blocked'
+                ? t.blocked
                 : secondsLeft > 0
                   ? `${secondsLeft}s`
-                  : 'Ready'}
+                  : t.ready}
             </ThemedText>
             <ThemedText type="small" style={styles.subText}>
               {initialDecision.kind === 'block'
-                ? 'Strict limit active'
+                ? t.strictLimitActive
                 : config.interventionType === 'breathing' && secondsLeft > 0
                   ? breathPhase
-                  : 'Take a breath'}
+                  : t.takeABreath}
             </ThemedText>
           </View>
 
           <ThemedText type="subtitle" style={styles.center} testID="intervene-app">
-            You are about to open {appName}
+            {t.aboutToOpen(appName)}
           </ThemedText>
 
           {initialDecision.kind === 'intervene' && initialDecision.limitReached && (
@@ -197,7 +201,7 @@ function InterveneSession({ appId }: { appId: string }) {
             onPress={handleDismiss}
             style={styles.primaryButton}>
             <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              Don&apos;t open {appName}
+              {t.dontOpen(appName)}
             </ThemedText>
           </Pressable>
 
@@ -214,7 +218,7 @@ function InterveneSession({ appId }: { appId: string }) {
                     !canContinue && styles.secondaryButtonDisabled,
                   ]}>
                   <ThemedText type="small">
-                    {canContinue ? `Continue (${mins}m)` : `Wait ${secondsLeft}s`}
+                    {canContinue ? t.continueFor(mins) : t.waitSeconds(secondsLeft)}
                   </ThemedText>
                 </Pressable>
               ))}

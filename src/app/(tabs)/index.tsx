@@ -7,6 +7,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { APP_CATALOG } from '@/core/catalog';
 import { AppRuleConfig, AppUsageState, InterventionType } from '@/core/types';
+import { getTranslations, Locale } from '@/i18n/strings';
+import {
+  getUserPreferences,
+  saveUserPreferences,
+  UserPreferences,
+} from '@/storage/preferences';
 import {
   getAllAppConfigs,
   getAllAppUsageStates,
@@ -27,14 +33,18 @@ export default function HomeScreen() {
   const [states, setStates] = useState<Record<string, AppUsageState>>(() =>
     getAllAppUsageStates()
   );
+  const [prefs, setPrefs] = useState<UserPreferences>(() => getUserPreferences());
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
+
+  const t = getTranslations(prefs.locale);
 
   const refresh = useCallback(() => {
     const currentNow = Date.now();
     setNowMs(currentNow);
     setConfigs(getAllAppConfigs());
     setStates(getAllAppUsageStates(currentNow));
+    setPrefs(getUserPreferences());
   }, []);
 
   useFocusEffect(
@@ -42,6 +52,11 @@ export default function HomeScreen() {
       refresh();
     }, [refresh])
   );
+
+  const toggleLocale = () => {
+    const nextLocale: Locale = prefs.locale === 'uk' ? 'en' : 'uk';
+    setPrefs(saveUserPreferences({ locale: nextLocale }));
+  };
 
   const toggleEnabled = (appId: string, enabled: boolean) => {
     const current = configs[appId];
@@ -71,11 +86,21 @@ export default function HomeScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.header}>
-            <ThemedText type="title">Blockit</ThemedText>
-            <ThemedText type="small" style={styles.subtitle}>
-              Mindful pause before distracting apps
-            </ThemedText>
+          <View style={styles.headerRow}>
+            <View style={styles.header}>
+              <ThemedText type="title">{t.homeTitle}</ThemedText>
+              <ThemedText type="small" style={styles.subtitle}>
+                {t.homeSubtitle}
+              </ThemedText>
+            </View>
+            <Pressable
+              testID="toggle-locale"
+              onPress={toggleLocale}
+              style={styles.langPill}>
+              <ThemedText type="smallBold">
+                {prefs.locale === 'uk' ? '🇺🇦 UK' : '🇬🇧 EN'}
+              </ThemedText>
+            </Pressable>
           </View>
 
           <View style={styles.summaryRow}>
@@ -84,7 +109,7 @@ export default function HomeScreen() {
                 {totalAttempts}
               </ThemedText>
               <ThemedText type="small" style={styles.subtitle}>
-                Attempts today
+                {t.attemptsToday}
               </ThemedText>
             </View>
             <View style={styles.summaryCard}>
@@ -92,19 +117,19 @@ export default function HomeScreen() {
                 {totalDismissals}
               </ThemedText>
               <ThemedText type="small" style={styles.subtitle}>
-                Mindful exits
+                {t.mindfulExits}
               </ThemedText>
             </View>
             <View style={styles.summaryCard}>
               <ThemedText type="subtitle">{totalDismissals * 8}m</ThemedText>
               <ThemedText type="small" style={styles.subtitle}>
-                Est. saved
+                {t.estSaved}
               </ThemedText>
             </View>
           </View>
 
           <ThemedText type="smallBold" style={styles.sectionTitle}>
-            Guarded Apps
+            {t.guardedApps}
           </ThemedText>
 
           {APP_CATALOG.map((app) => {
@@ -142,7 +167,7 @@ export default function HomeScreen() {
                     onPress={() => router.push(`/intervene?app=${app.id}`)}
                     style={styles.previewButton}>
                     <ThemedText type="small" style={styles.previewText}>
-                      Pause
+                      {t.pauseButton}
                     </ThemedText>
                   </Pressable>
 
@@ -155,7 +180,7 @@ export default function HomeScreen() {
 
                 {isExpanded && cfg && (
                   <View style={styles.expandedArea}>
-                    <ThemedText type="small">Intervention style</ThemedText>
+                    <ThemedText type="small">{t.interventionStyle}</ThemedText>
                     <View style={styles.chipRow}>
                       {INTERVENTION_TYPES.map((item) => {
                         const active = cfg.interventionType === item.id;
@@ -176,7 +201,7 @@ export default function HomeScreen() {
                       })}
                     </View>
 
-                    <ThemedText type="small">Base duration (seconds)</ThemedText>
+                    <ThemedText type="small">{t.baseDuration}</ThemedText>
                     <View style={styles.chipRow}>
                       {[3, 6, 10, 15].map((sec) => {
                         const active = cfg.baseDurationSec === sec;
@@ -197,7 +222,7 @@ export default function HomeScreen() {
                       })}
                     </View>
 
-                    <ThemedText type="small">Daily open limit</ThemedText>
+                    <ThemedText type="small">{t.dailyOpenLimit}</ThemedText>
                     <View style={styles.chipRow}>
                       {[null, 3, 5, 10].map((lim) => {
                         const active = cfg.dailyOpenLimit === lim;
@@ -211,7 +236,7 @@ export default function HomeScreen() {
                             <ThemedText
                               type="small"
                               style={active ? styles.chipTextActive : undefined}>
-                              {lim === null ? 'Unlimited' : `${lim}/day`}
+                              {lim === null ? t.unlimited : `${lim}/day`}
                             </ThemedText>
                           </Pressable>
                         );
@@ -219,9 +244,7 @@ export default function HomeScreen() {
                     </View>
 
                     <View style={styles.strictRow}>
-                      <ThemedText type="small">
-                        Strict block when daily limit reached
-                      </ThemedText>
+                      <ThemedText type="small">{t.strictBlockWhenLimit}</ThemedText>
                       <Switch
                         value={cfg.strictMode}
                         onValueChange={(val) =>
@@ -231,9 +254,7 @@ export default function HomeScreen() {
                     </View>
 
                     <View style={styles.strictRow}>
-                      <ThemedText type="small">
-                        Work hours schedule (Mon–Fri 09:00–17:00)
-                      </ThemedText>
+                      <ThemedText type="small">{t.workHoursSchedule}</ThemedText>
                       <Switch
                         testID={`schedule-work-${app.id}`}
                         value={cfg.schedules.length > 0}
@@ -270,7 +291,20 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 100, gap: 14 },
-  header: { gap: 4 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  header: { flex: 1, gap: 4 },
+  langPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(128,128,128,0.35)',
+  },
   subtitle: { opacity: 0.7 },
   summaryRow: { flexDirection: 'row', gap: 10 },
   summaryCard: {

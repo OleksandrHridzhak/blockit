@@ -61,6 +61,30 @@ struct ShouldInterceptIntent: AppIntent {
 }
 
 @available(iOS 16.0, *)
+struct GetDailySummaryIntent: AppIntent {
+  static var title: LocalizedStringResource = "Get Today's Blockit Stats"
+  static var description = IntentDescription(
+    "Returns a concise summary of today's mindful pauses, exits, and saved minutes for widgets or Shortcuts."
+  )
+  static var openAppWhenRun: Bool = false
+
+  func perform() async throws -> some IntentResult & ReturnsValue<String> {
+    let raw = UserDefaults.standard.string(forKey: "\(kStorePrefix)widget.snapshot")
+    guard
+      let raw,
+      let data = raw.data(using: .utf8),
+      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
+      return .result(value: "0 pauses today · 0m saved")
+    }
+    let attempts = json["attemptsToday"] as? Int ?? 0
+    let exits = json["mindfulExitsToday"] as? Int ?? 0
+    let saved = json["savedMinutesToday"] as? Int ?? 0
+    return .result(value: "\(exits)/\(attempts) mindful exits · \(saved)m saved")
+  }
+}
+
+@available(iOS 16.0, *)
 struct BlockitShortcutsProvider: AppShortcutsProvider {
   static var appShortcuts: [AppShortcut] {
     AppShortcut(
@@ -71,6 +95,15 @@ struct BlockitShortcutsProvider: AppShortcutsProvider {
       ],
       shortTitle: "Should Intercept App",
       systemImageName: "hand.raised.fill"
+    )
+    AppShortcut(
+      intent: GetDailySummaryIntent(),
+      phrases: [
+        "Show today's stats in \(.applicationName)",
+        "How much time did \(.applicationName) save today",
+      ],
+      shortTitle: "Today's Stats",
+      systemImageName: "chart.bar.fill"
     )
   }
 }

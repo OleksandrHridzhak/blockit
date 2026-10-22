@@ -7,6 +7,8 @@ interface NativeBlockitBridge {
   setBypassUntil(appId: string, epochMs: number): void;
   getBypassUntil(appId: string): number;
   setAppEnabled(appId: string, enabled: boolean): void;
+  setWidgetSnapshot(json: string): void;
+  getWidgetSnapshot(): string | null;
 }
 
 const nativeModule = requireOptionalNativeModule<NativeBlockitBridge>('BlockitBridge');
@@ -15,6 +17,7 @@ const nativeModule = requireOptionalNativeModule<NativeBlockitBridge>('BlockitBr
 const memoryFallback = new Map<string, string>();
 const bypassFallback = new Map<string, number>();
 const enabledFallback = new Map<string, boolean>();
+let widgetSnapshotFallback: string | null = null;
 
 export const BlockitBridge = {
   isNativeAvailable: Boolean(nativeModule),
@@ -67,9 +70,25 @@ export const BlockitBridge = {
     enabledFallback.set(cleanId, enabled);
   },
 
+  setWidgetSnapshot(json: string): void {
+    if (nativeModule) {
+      nativeModule.setWidgetSnapshot(json);
+      return;
+    }
+    widgetSnapshotFallback = json;
+  },
+
+  getWidgetSnapshot(): string | null {
+    if (nativeModule) {
+      return nativeModule.getWidgetSnapshot();
+    }
+    return widgetSnapshotFallback;
+  },
+
   __resetFallbackForTests(): void {
     memoryFallback.clear();
     bypassFallback.clear();
     enabledFallback.clear();
+    widgetSnapshotFallback = null;
   },
 };

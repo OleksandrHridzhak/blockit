@@ -7,7 +7,9 @@ import {
   recordDismissed,
   recordInterveneTriggered,
 } from '@/core/rules-engine';
+import { formatDayKey } from '@/core/time';
 import { AppRuleConfig, AppUsageState } from '@/core/types';
+import { WidgetStatsSnapshot } from '@/core/widget-snapshot';
 import { BlockitBridge } from '../../modules/blockit-bridge';
 
 export interface HistoryEvent {
@@ -92,6 +94,49 @@ export function saveAppUsageState(appId: string, state: AppUsageState): void {
   all[cleanId] = state;
   writeJson(STATES_KEY, all);
   BlockitBridge.setBypassUntil(cleanId, state.bypassUntilMs);
+  syncWidgetSnapshot(state.dayKey, all);
+}
+
+export function syncWidgetSnapshot(
+  dayKey: string = formatDayKey(Date.now()),
+  allStates?: Record<string, AppUsageState>
+): WidgetStatsSnapshot {
+  const states = allStates ?? readJson<Record<string, AppUsageState>>(STATES_KEY, {});
+  let attemptsToday = 0;
+  let mindfulExitsToday = 0;
+  let opensToday = 0;
+
+  for (const st of Object.values(states)) {
+    if (st.dayKey === dayKey) {
+      attemptsToday += st.attemptsToday;
+      mindfulExitsToday += st.dismissalsToday;
+      opensToday += st.opensToday;
+    }
+  }
+
+  const totalDecisions = mindfulExitsToday + opensToday;
+  const snapshot: WidgetStatsSnapshot = {
+    dayKey,
+    attemptsToday,
+    mindfulExitsToday,
+    savedMinutesToday: mindfulExitsToday * 8,
+    mindfulRatePercent:
+      totalDecisions > 0 ? Math.round((mindfulExitsToday / totalDecisions) * 100) : 0,
+    updatedAtMs: Date.now(),
+  };
+
+  BlockitBridge.setWidgetSnapshot(JSON.stringify(snapshot));
+  return snapshot;
+}
+
+export function getWidgetSnapshot(): WidgetStatsSnapshot | null {
+  const raw = BlockitBridge.getWidgetSnapshot();
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as WidgetStatsSnapshot;
+  } catch {
+    return null;
+  }
 }
 
 export function getAllAppUsageStates(

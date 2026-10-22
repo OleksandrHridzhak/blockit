@@ -8,7 +8,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { AnalyticsSummary, computeAnalyticsSummary } from '@/core/analytics';
 import { getAppDisplayName } from '@/core/catalog';
-import { getHistoryEvents, HistoryEvent } from '@/storage/repository';
+import {
+  getUserPreferences,
+  saveUserPreferences,
+  UserPreferences,
+} from '@/storage/preferences';
+import {
+  getHistoryEvents,
+  getWidgetSnapshot,
+  HistoryEvent,
+  syncWidgetSnapshot,
+} from '@/storage/repository';
 
 const SETUP_STEPS = [
   '1. Open the Apple Shortcuts app on your iPhone → Automation tab → tap "+".',
@@ -21,25 +31,36 @@ export default function ExploreScreen() {
   const [data, setData] = useState<{
     events: HistoryEvent[];
     summary: AnalyticsSummary;
+    prefs: UserPreferences;
   }>(() => {
     const events = getHistoryEvents();
+    syncWidgetSnapshot();
     return {
       events,
       summary: computeAnalyticsSummary(events, Date.now()),
+      prefs: getUserPreferences(),
     };
   });
 
   useFocusEffect(
     useCallback(() => {
       const events = getHistoryEvents();
+      syncWidgetSnapshot();
       setData({
         events,
         summary: computeAnalyticsSummary(events, Date.now()),
+        prefs: getUserPreferences(),
       });
     }, [])
   );
 
-  const { events, summary } = data;
+  const { events, summary, prefs } = data;
+  const widgetSnapshot = getWidgetSnapshot();
+
+  const togglePro = () => {
+    const nextPrefs = saveUserPreferences({ isPro: !prefs.isPro });
+    setData((prev) => ({ ...prev, prefs: nextPrefs }));
+  };
   const maxDayCount = Math.max(
     1,
     ...summary.last7Days.map((d) => d.dismissed + d.continued)
@@ -112,6 +133,39 @@ export default function ExploreScreen() {
               style={styles.button}>
               <ThemedText type="smallBold" style={styles.buttonText}>
                 Open Apple Shortcuts
+              </ThemedText>
+            </Pressable>
+          </View>
+
+          <View style={styles.card}>
+            <ThemedText type="smallBold">
+              Home Screen Widget Snapshot (Today&apos;s Stats Intent)
+            </ThemedText>
+            <ThemedText type="small" testID="widget-snapshot-preview">
+              {widgetSnapshot
+                ? `${widgetSnapshot.mindfulExitsToday}/${widgetSnapshot.attemptsToday} mindful exits · ${widgetSnapshot.savedMinutesToday}m saved`
+                : '0/0 mindful exits · 0m saved'}
+            </ThemedText>
+            <ThemedText type="small" style={styles.muted}>
+              Add the &ldquo;Today&apos;s Stats&rdquo; Blockit shortcut widget to your iOS Home
+              Screen or Lock Screen.
+            </ThemedText>
+          </View>
+
+          <View style={styles.card}>
+            <ThemedText type="smallBold">
+              Blockit Pro {prefs.isPro ? '✓ Active' : '(Preview)'}
+            </ThemedText>
+            <ThemedText type="small" style={styles.muted}>
+              Unlocks unlimited guarded apps, strict schedules, and website domain rules (
+              {prefs.blockedDomains.join(', ')}).
+            </ThemedText>
+            <Pressable
+              testID="toggle-pro-plan"
+              onPress={togglePro}
+              style={styles.button}>
+              <ThemedText type="smallBold" style={styles.buttonText}>
+                {prefs.isPro ? 'Manage Pro (Active)' : 'Unlock Blockit Pro (Test Mode)'}
               </ThemedText>
             </Pressable>
           </View>

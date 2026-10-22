@@ -1,10 +1,12 @@
 import { BlockitBridge } from '../../../modules/blockit-bridge';
+import { getUserPreferences, saveUserPreferences } from '../preferences';
 import {
   getAllAppConfigs,
   getAllAppUsageStates,
   getAppConfig,
   getAppUsageState,
   getHistoryEvents,
+  getWidgetSnapshot,
   logInterventionContinued,
   logInterventionDismissed,
   logInterventionStarted,
@@ -59,5 +61,23 @@ describe('storage repository & bridge fallback', () => {
     expect(history[0].outcome).toBe('continued');
     expect(history[1].outcome).toBe('dismissed');
     expect(history[2].outcome).toBe('intervened');
+
+    const snapshot = getWidgetSnapshot();
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.attemptsToday).toBe(1);
+    expect(snapshot?.mindfulExitsToday).toBe(1);
+    expect(snapshot?.savedMinutesToday).toBe(8);
+    expect(snapshot?.mindfulRatePercent).toBe(50);
+  });
+
+  it('persists user preferences (locale, pro mode, blocked domains)', () => {
+    const initial = getUserPreferences();
+    expect(initial.locale).toBe('uk');
+    expect(initial.isPro).toBe(false);
+
+    const updated = saveUserPreferences({ locale: 'en', isPro: true });
+    expect(updated.locale).toBe('en');
+    expect(updated.isPro).toBe(true);
+    expect(getUserPreferences().locale).toBe('en');
   });
 });

@@ -33,5 +33,13 @@ public class BlockitBridgeModule: Module {
       let cleanId = appId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
       UserDefaults.standard.set(enabled, forKey: "\(kStorePrefix)enabled.\(cleanId)")
     }
+
+    Function("setWidgetSnapshot") { (json: String) in
+      UserDefaults.standard.set(json, forKey: "\(kStorePrefix)widget.snapshot")
+    }
+
+    Function("getWidgetSnapshot") { () -> String? in
+      UserDefaults.standard.string(forKey: "\(kStorePrefix)widget.snapshot")
+    }
   }
 }
