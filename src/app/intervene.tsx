@@ -1,316 +1,73 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Text, TextInput, View } from 'react-native';
+import { Action, Card, Copy, Kicker, Page, ui, usePalette } from '@/components/protection-ui';
+import { PauseMode, PauseRequest, remainingSeconds, screenTime } from '@/features/screen-time/client';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { getAppDisplayName, getCatalogApp } from '@/core/catalog';
-import { normalizeAppId } from '@/core/deeplink';
-import { decide } from '@/core/rules-engine';
-import { openGuardedTargetApp } from '@/features/intervention/open-target-app';
-import { getTranslations } from '@/i18n/strings';
-import { getUserPreferences } from '@/storage/preferences';
-import {
-  getAppConfig,
-  getAppUsageState,
-  logInterventionContinued,
-  logInterventionDismissed,
-  logInterventionStarted,
-} from '@/storage/repository';
-
-const BYPASS_PRESETS_MIN = [1, 5, 15] as const;
-const REFLECTION_PROMPTS = [
-  'What are you looking for right now?',
-  'Is opening this app aligned with how you want to spend the next 10 minutes?',
-  'Are you opening this out of intention or boredom?',
-];
-const MINDFUL_PHRASE = 'I open this with intention';
-
-export default function InterveneScreen() {
-  const { app } = useLocalSearchParams<{ app?: string }>();
-  const appId = normalizeAppId(app) ?? 'unknown';
-
-  return <InterveneSession key={appId} appId={appId} />;
+const PHRASE = 'Я обираю відкрити свідомо';
+export default function PauseScreen() {
+  const params = useLocalSearchParams<{ preview?: string; request?: string; seconds?: string; mode?: string; label?: string }>();
+  const preview = params.preview === '1';
+  const duration = [10, 20, 30, 60].includes(Number(params.seconds)) ? Number(params.seconds) : 20;
+  const mode: PauseMode = params.mode === 'typing' || params.mode === 'reflection' ? params.mode : 'countdown';
+  return <PauseSession key={`${preview}-${params.request ?? ''}-${duration}-${mode}-${params.label ?? ''}`} preview={preview} duration={duration} mode={mode} label={params.label?.slice(0, 80) ?? 'застосунку'} />;
 }
-
-function InterveneSession({ appId }: { appId: string }) {
-  const appName = getAppDisplayName(appId);
-  const catalogApp = getCatalogApp(appId);
-
-  const [session] = useState(() => {
-    const now = Date.now();
-    const config = getAppConfig(appId);
-    const state = getAppUsageState(appId, now);
-    const decision = decide({ appId }, config, state, now);
-    const prefs = getUserPreferences();
-    return { config, decision, prefs };
-  });
-
-  const { config, decision: initialDecision, prefs } = session;
-  const t = getTranslations(prefs.locale);
-  const initialDuration =
-    initialDecision.kind === 'intervene' ? initialDecision.durationSec : config.baseDurationSec;
-  const attemptNo =
-    initialDecision.kind === 'intervene' || initialDecision.kind === 'block'
-      ? initialDecision.attemptNo
-      : 1;
-
-  const [secondsLeft, setSecondsLeft] = useState<number>(initialDuration);
-  const [typedText, setTypedText] = useState('');
-  const [selectedReason, setSelectedReason] = useState<string | null>(null);
-
+function PauseSession({ preview, duration, mode, label }: { preview: boolean; duration: number; mode: PauseMode; label: string }) {
+  const c = usePalette();
+  const [request, setRequest] = useState<PauseRequest | null>(() => preview ? { id: 'preview', readyAt: Date.now() + duration * 1000, mode } : null);
+  const [now, setNow] = useState(() => Date.now());
+  const [answer, setAnswer] = useState('');
+  const [loaded, setLoaded] = useState(preview);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState('');
+  const lock = useRef(false);
   useEffect(() => {
-    if (initialDecision.kind === 'allow') {
-      openGuardedTargetApp(appId).finally(() => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace('/');
-        }
-      });
-      return;
-    }
-    if (initialDecision.kind === 'intervene') {
-      logInterventionStarted(appId, initialDecision.durationSec);
-    }
-  }, [appId, initialDecision]);
-
-  useEffect(() => {
-    if (secondsLeft <= 0) return;
-    const timer = setInterval(() => {
-      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [secondsLeft]);
-
-  const isTypingRequired = config.interventionType === 'typing';
-  const isReflectionRequired = config.interventionType === 'reflection';
-
-  const typingUnlocked =
-    !isTypingRequired ||
-    typedText.trim().toLowerCase() === MINDFUL_PHRASE.toLowerCase();
-  const reflectionUnlocked = !isReflectionRequired || Boolean(selectedReason);
-  const canContinue =
-    initialDecision.kind !== 'block' &&
-    secondsLeft === 0 &&
-    typingUnlocked &&
-    reflectionUnlocked;
-
-  const handleDismiss = () => {
-    logInterventionDismissed(appId);
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
-  };
-
-  const handleContinue = async (bypassMinutes: number) => {
-    if (!canContinue) return;
-    logInterventionContinued(appId, bypassMinutes);
-    await openGuardedTargetApp(appId);
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
-  };
-
-  const promptText = REFLECTION_PROMPTS[(attemptNo - 1) % REFLECTION_PROMPTS.length];
-  const breathPhase = secondsLeft % 6 >= 3 ? t.inhaleSlowly : t.exhaleGently;
-
-  return (
-    <ThemedView style={styles.container}>
-      <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.badge}>
-          <ThemedText type="small" style={styles.badgeText} testID="intervene-attempt">
-            Attempt #{attemptNo} today
-          </ThemedText>
+    let alive = true;
+    const refresh = async () => {
+      setNow(Date.now());
+      if (!preview) {
+        try { const pending = await screenTime.pending(); if (alive) { setRequest(pending); setLoaded(true); } }
+        catch { if (alive) { setError('Не вдалося прочитати запит. Відкрий Blockit ще раз.'); setLoaded(true); } }
+      }
+    };
+    refresh();
+    const timer = setInterval(() => setNow(Date.now()), 250);
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') refresh(); });
+    return () => { alive = false; clearInterval(timer); sub.remove(); };
+  }, [preview]);
+  const seconds = request ? remainingSeconds(request.readyAt, now) : 0;
+  const valid = request?.mode === 'typing' ? answer.trim() === PHRASE : request?.mode === 'reflection' ? ['reply', 'task', 'rest'].includes(answer) : true;
+  async function finish() {
+    if (lock.current || !request || seconds > 0 || !valid) return;
+    lock.current = true; setBusy(true); setError('');
+    try { if (!preview) await screenTime.finish(request.id, answer); setDone(true); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Не вдалося надати доступ. Спробуй знову.'); }
+    finally { lock.current = false; setBusy(false); }
+  }
+  async function leave() {
+    if (lock.current) return;
+    lock.current = true; setBusy(true);
+    try { if (!preview) await screenTime.cancel(); router.replace('/'); }
+    catch { setError('Не вдалося закрити запит. Спробуй знову.'); }
+    finally { lock.current = false; setBusy(false); }
+  }
+  return <Page><Stack.Screen options={{ headerShown: false }} />
+    <Kicker>{preview ? 'ПРИКЛАД / БЕЗ РОЗБЛОКУВАННЯ' : 'ПАУЗА / ПЕРЕД ВІДКРИТТЯМ'}</Kicker>
+    {done ? <><Copy large>{preview ? 'Ось як це працює' : 'Доступ відкрито'}</Copy><Card><Copy>{preview ? 'У справжній паузі доступ відкриється лише після перевірки часу й завдання.' : 'Повернися до застосунку, з якого почалась пауза. Доступ триватиме близько 15 хвилин.'}</Copy></Card><Action label="До застосунків" onPress={() => router.replace('/')} /></> : !loaded ? <Copy>Відкриваємо паузу…</Copy> : !request ? <><Copy large>Активної паузи немає</Copy><Copy muted>Відкрий заблокований застосунок і натисни кнопку на екрані паузи. Запит дійсний 10 хвилин.</Copy><Action label="До застосунків" onPress={() => router.replace('/')} /></> : <>
+      <Copy title>{preview ? `Пауза перед відкриттям ${label}` : "Пауза перед відкриттям"}</Copy>
+      <View style={{ paddingVertical: 36, gap: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.line }}>
+        <Copy muted>{seconds > 0 ? "Зачекай. Потім виріши, чи хочеш продовжити." : "Пауза завершилась. Відкривати?"}</Copy>
+        <View style={[ui.row, { alignItems: 'baseline', gap: 14 }]}>
+          <Text style={{ fontFamily: 'InstrumentSans', fontSize: 96, lineHeight: 108, fontWeight: '400', letterSpacing: -4, color: c.text }}>{seconds > 0 ? String(seconds).padStart(2, '0') : '00'}</Text>
+          <Kicker>{seconds > 0 ? 'секунд' : 'готово'}</Kicker>
         </View>
-
-        <View style={styles.hero}>
-          <View
-            style={[
-              styles.breathCircle,
-              {
-                borderColor: catalogApp?.accentColor ?? '#208AEF',
-                opacity: secondsLeft > 0 ? 0.85 : 1,
-              },
-            ]}>
-            <ThemedText type="title" testID="intervene-timer">
-              {initialDecision.kind === 'block'
-                ? t.blocked
-                : secondsLeft > 0
-                  ? `${secondsLeft}s`
-                  : t.ready}
-            </ThemedText>
-            <ThemedText type="small" style={styles.subText}>
-              {initialDecision.kind === 'block'
-                ? t.strictLimitActive
-                : config.interventionType === 'breathing' && secondsLeft > 0
-                  ? breathPhase
-                  : t.takeABreath}
-            </ThemedText>
-          </View>
-
-          <ThemedText type="subtitle" style={styles.center} testID="intervene-app">
-            {t.aboutToOpen(appName)}
-          </ThemedText>
-
-          {initialDecision.kind === 'intervene' && initialDecision.limitReached && (
-            <ThemedText type="small" style={styles.warningText}>
-              Daily open limit reached ({config.dailyOpenLimit}/day)
-            </ThemedText>
-          )}
-        </View>
-
-        {isReflectionRequired && initialDecision.kind !== 'block' && (
-          <View style={styles.card}>
-            <ThemedText type="smallBold">{promptText}</ThemedText>
-            <View style={styles.chipRow}>
-              {['Reply to someone', 'Quick check', 'Just bored'].map((reason) => {
-                const active = selectedReason === reason;
-                return (
-                  <Pressable
-                    key={reason}
-                    testID={`reason-${reason}`}
-                    onPress={() => setSelectedReason(reason)}
-                    style={[styles.chip, active && styles.chipActive]}>
-                    <ThemedText type="small" style={active ? styles.chipTextActive : undefined}>
-                      {reason}
-                    </ThemedText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        {isTypingRequired && initialDecision.kind !== 'block' && (
-          <View style={styles.card}>
-            <ThemedText type="small">
-              Type &ldquo;{MINDFUL_PHRASE}&rdquo; to unlock:
-            </ThemedText>
-            <TextInput
-              testID="intervene-phrase-input"
-              value={typedText}
-              onChangeText={setTypedText}
-              placeholder={MINDFUL_PHRASE}
-              placeholderTextColor="#888"
-              autoCapitalize="none"
-              style={styles.input}
-            />
-          </View>
-        )}
-
-        <View style={styles.actions}>
-          <Pressable
-            testID="intervene-dismiss"
-            onPress={handleDismiss}
-            style={styles.primaryButton}>
-            <ThemedText type="smallBold" style={styles.primaryButtonText}>
-              {t.dontOpen(appName)}
-            </ThemedText>
-          </Pressable>
-
-          {initialDecision.kind !== 'block' && (
-            <View style={styles.continueRow}>
-              {BYPASS_PRESETS_MIN.map((mins) => (
-                <Pressable
-                  key={mins}
-                  testID={`intervene-continue-${mins}`}
-                  disabled={!canContinue}
-                  onPress={() => handleContinue(mins)}
-                  style={[
-                    styles.secondaryButton,
-                    !canContinue && styles.secondaryButtonDisabled,
-                  ]}>
-                  <ThemedText type="small">
-                    {canContinue ? t.continueFor(mins) : t.waitSeconds(secondsLeft)}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </View>
-      </SafeAreaView>
-    </ThemedView>
-  );
+      </View>
+      {request.mode === 'reflection' && <Card><Copy title>Навіщо відкриваєш?</Copy><Copy muted>Обери те, що зараз відповідає твоєму наміру.</Copy><View style={ui.row}>{[{id:'reply', label:'Відповісти'}, {id:'task', label:'Зробити справу'}, {id:'rest', label:'Відпочити'}].map(reason => <Action key={reason.id} label={reason.label} secondary selected={answer === reason.id} onPress={() => setAnswer(reason.id)} />)}</View></Card>}
+      {request.mode === 'typing' && <Card><Copy title>Напиши фразу</Copy><Copy>{PHRASE}</Copy><TextInput accessibilityLabel="Фраза усвідомленого вибору" value={answer} onChangeText={setAnswer} autoCorrect={false} multiline style={{ color: c.text, borderColor: c.line, borderWidth: 1, borderRadius: 0, padding: 14, fontFamily: 'Geist', fontSize: 17, minHeight: 54 }} /></Card>}
+      <Action label={seconds > 0 ? `Ще ${seconds} с` : !valid ? 'Спочатку заверши завдання' : preview ? 'Завершити демопаузу' : 'Надати доступ на 15 хвилин'} disabled={busy || seconds > 0 || !valid} onPress={finish} />
+      <Action label="Не відкривати" secondary disabled={busy} onPress={leave} />
+    </>}
+    {error !== '' && <Card><Copy>{error}</Copy></Card>}
+  </Page>;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    gap: 16,
-  },
-  badge: {
-    alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(32, 138, 239, 0.14)',
-  },
-  badgeText: { color: '#208AEF' },
-  hero: { alignItems: 'center', gap: 16 },
-  breathCircle: {
-    width: 176,
-    height: 176,
-    borderRadius: 88,
-    borderWidth: 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 6,
-  },
-  center: { textAlign: 'center' },
-  subText: { textAlign: 'center', opacity: 0.7 },
-  warningText: { color: '#E5484D', textAlign: 'center' },
-  card: {
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: 'rgba(128,128,128,0.1)',
-    gap: 10,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  chipActive: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipTextActive: { color: '#FFFFFF' },
-  input: {
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#208AEF',
-  },
-  actions: { gap: 12 },
-  primaryButton: {
-    backgroundColor: '#208AEF',
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#FFFFFF' },
-  continueRow: { flexDirection: 'row', gap: 8 },
-  secondaryButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-    alignItems: 'center',
-  },
-  secondaryButtonDisabled: { opacity: 0.45 },
-});

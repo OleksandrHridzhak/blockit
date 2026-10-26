@@ -1,36 +1,50 @@
-import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider } from 'expo-router';
+import '@/global.css';
+import { DarkTheme, router, Stack, ThemeProvider, usePathname, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { AppState, useColorScheme } from 'react-native';
+import { AppState } from 'react-native';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { BlockitBridge } from '../../modules/blockit-bridge';
+import { screenTime } from '@/features/screen-time/client';
 
 SplashScreen.preventAutoHideAsync();
 
-function checkPendingNativeIntercept() {
-  const pendingApp = BlockitBridge.consumePendingInterceptApp();
-  if (pendingApp) {
-    router.push(`/intervene?app=${pendingApp}`);
-  }
-}
-
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const [fontsLoaded, fontError] = useFonts({
+    Geist: require('@/assets/fonts/Geist-Regular.ttf'),
+    GeistSemiBold: require('@/assets/fonts/Geist-SemiBold.ttf'),
+    InstrumentSans: require('@/assets/fonts/InstrumentSans-Regular.ttf'),
+  });
+  const navigation = useRootNavigationState();
+  const pathname = usePathname();
 
   useEffect(() => {
-    checkPendingNativeIntercept();
+    if (!navigation?.key || (!fontsLoaded && !fontError)) return;
+    SplashScreen.hideAsync().catch(() => {});
+    let alive = true;
+    async function checkPending() {
+      try {
+        const request = await screenTime.pending();
+        if (alive && request && pathname !== '/intervene') {
+          router.push({ pathname: '/intervene', params: { request: request.id } });
+        }
+      } catch { /* The home screen exposes permission/status recovery. */ }
+    }
+    checkPending();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        checkPendingNativeIntercept();
+        checkPending();
       }
     });
-    return () => sub.remove();
-  }, []);
+    return () => { alive = false; sub.remove(); };
+  }, [navigation?.key, pathname, fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
+    <ThemeProvider value={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#121212', card: '#121212', text: '#FAFAFA', primary: '#FAFAFA', border: '#2E2E2E' } }}>
+      <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen

@@ -75,12 +75,14 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             | tee build.log | xcbeautify --renderer github-actions
 
-      - name: Locate .app and verify AppIntents metadata
+      - name: Locate .app and verify Screen Time extensions
         id: app
         run: |
           APP="build/Build/Products/${{ matrix.configuration }}-${{ matrix.sdk }}/Blockit.app"
           test -d "$APP"
-          test -d "$APP/Metadata.appintents"
+          test -d "$APP/PlugIns/BlockitShield.appex"
+          test -d "$APP/PlugIns/BlockitAction.appex"
+          test -d "$APP/PlugIns/BlockitMonitor.appex"
           echo "path=$APP" >> "$GITHUB_OUTPUT"
           /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$APP/Info.plist"
 
@@ -103,7 +105,7 @@ jobs:
           xcrun simctl launch "$UDID" com.hridzhak.blockit
           sleep 20
           xcrun simctl io "$UDID" screenshot out/01-launch.png
-          xcrun simctl openurl "$UDID" "blockit://intervene?app=instagram"
+          xcrun simctl openurl "$UDID" "blockit://intervene?preview=1"
           sleep 8
           xcrun simctl io "$UDID" screenshot out/02-deeplink.png
 

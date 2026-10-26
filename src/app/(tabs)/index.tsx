@@ -1,357 +1,54 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { APP_CATALOG } from '@/core/catalog';
-import { AppRuleConfig, AppUsageState, InterventionType } from '@/core/types';
-import { getTranslations, Locale } from '@/i18n/strings';
-import {
-  getUserPreferences,
-  saveUserPreferences,
-  UserPreferences,
-} from '@/storage/preferences';
-import {
-  getAllAppConfigs,
-  getAllAppUsageStates,
-  saveAppConfig,
-} from '@/storage/repository';
-
-const INTERVENTION_TYPES: readonly { id: InterventionType; label: string }[] = [
-  { id: 'breathing', label: 'Breathing' },
-  { id: 'countdown', label: 'Countdown' },
-  { id: 'reflection', label: 'Reflection' },
-  { id: 'typing', label: 'Typing' },
-];
+import { router } from 'expo-router';
+import { Text, View } from 'react-native';
+import { Action, Card, Copy, Kicker, Page, ui } from '@/components/protection-ui';
+import { useProtection } from '@/hooks/use-protection';
+import { previewApps, saveRule } from '@/features/preview/store';
+import { screenTime } from '@/features/screen-time/client';
 
 export default function HomeScreen() {
-  const [configs, setConfigs] = useState<Record<string, AppRuleConfig>>(() =>
-    getAllAppConfigs()
-  );
-  const [states, setStates] = useState<Record<string, AppUsageState>>(() =>
-    getAllAppUsageStates()
-  );
-  const [prefs, setPrefs] = useState<UserPreferences>(() => getUserPreferences());
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
-
-  const t = getTranslations(prefs.locale);
-
-  const refresh = useCallback(() => {
-    const currentNow = Date.now();
-    setNowMs(currentNow);
-    setConfigs(getAllAppConfigs());
-    setStates(getAllAppUsageStates(currentNow));
-    setPrefs(getUserPreferences());
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
-
-  const toggleLocale = () => {
-    const nextLocale: Locale = prefs.locale === 'uk' ? 'en' : 'uk';
-    setPrefs(saveUserPreferences({ locale: nextLocale }));
+  const { view, busy, error, run, refresh } = useProtection();
+  const modeLabel = view?.mode === 'typing' ? 'Написати фразу' : view?.mode === 'reflection' ? 'Назвати намір' : 'Звичайна пауза';
+  const addApps = () => {
+    if (!view) return;
+    if (view.demo) { router.push('/select-apps'); return; }
+    run(async () => {
+      if (view.authorization !== 'approved') await screenTime.authorize();
+      await screenTime.pick();
+    });
   };
+  const tryPause = (app?: string) => router.push({ pathname: '/intervene', params: {
+    preview: '1', seconds: String(view?.seconds ?? 20), mode: view?.mode ?? 'countdown',
+    label: previewApps.find(item => item.id === app)?.name ?? 'обраного застосунку',
+  } });
 
-  const toggleEnabled = (appId: string, enabled: boolean) => {
-    const current = configs[appId];
-    if (!current) return;
-    const updated = saveAppConfig({ ...current, enabled });
-    setConfigs((prev) => ({ ...prev, [appId]: updated }));
-  };
-
-  const updateConfigField = <K extends keyof AppRuleConfig>(
-    appId: string,
-    key: K,
-    value: AppRuleConfig[K]
-  ) => {
-    const current = configs[appId];
-    if (!current) return;
-    const updated = saveAppConfig({ ...current, [key]: value });
-    setConfigs((prev) => ({ ...prev, [appId]: updated }));
-  };
-
-  const totalAttempts = Object.values(states).reduce((sum, s) => sum + s.attemptsToday, 0);
-  const totalDismissals = Object.values(states).reduce(
-    (sum, s) => sum + s.dismissalsToday,
-    0
-  );
-
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.headerRow}>
-            <View style={styles.header}>
-              <ThemedText type="title">{t.homeTitle}</ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.homeSubtitle}
-              </ThemedText>
-            </View>
-            <Pressable
-              testID="toggle-locale"
-              onPress={toggleLocale}
-              style={styles.langPill}>
-              <ThemedText type="smallBold">
-                {prefs.locale === 'uk' ? '🇺🇦 UK' : '🇬🇧 EN'}
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle" testID="home-total-attempts">
-                {totalAttempts}
-              </ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.attemptsToday}
-              </ThemedText>
-            </View>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle" testID="home-total-dismissed">
-                {totalDismissals}
-              </ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.mindfulExits}
-              </ThemedText>
-            </View>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle">{totalDismissals * 8}m</ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.estSaved}
-              </ThemedText>
-            </View>
-          </View>
-
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            {t.guardedApps}
-          </ThemedText>
-
-          {APP_CATALOG.map((app) => {
-            const cfg = configs[app.id];
-            const st = states[app.id];
-            const isExpanded = expandedAppId === app.id;
-            const bypassRemainingMin =
-              st?.bypassUntilMs && st.bypassUntilMs > nowMs
-                ? Math.ceil((st.bypassUntilMs - nowMs) / 60_000)
-                : 0;
-
-            return (
-              <View key={app.id} style={styles.appCard}>
-                <View style={styles.appHeader}>
-                  <Pressable
-                    style={styles.appTitleArea}
-                    testID={`app-row-${app.id}`}
-                    onPress={() => setExpandedAppId(isExpanded ? null : app.id)}>
-                    <View style={[styles.dot, { backgroundColor: app.accentColor }]} />
-                    <View style={styles.appMeta}>
-                      <ThemedText type="smallBold">{app.name}</ThemedText>
-                      <ThemedText type="small" style={styles.subtitle}>
-                        {cfg?.interventionType ?? 'breathing'} · {cfg?.baseDurationSec ?? 6}s
-                        {bypassRemainingMin > 0
-                          ? ` · bypass ${bypassRemainingMin}m`
-                          : st?.attemptsToday
-                            ? ` · ${st.attemptsToday} today`
-                            : ''}
-                      </ThemedText>
-                    </View>
-                  </Pressable>
-
-                  <Pressable
-                    testID={`preview-${app.id}`}
-                    onPress={() => router.push(`/intervene?app=${app.id}`)}
-                    style={styles.previewButton}>
-                    <ThemedText type="small" style={styles.previewText}>
-                      {t.pauseButton}
-                    </ThemedText>
-                  </Pressable>
-
-                  <Switch
-                    testID={`switch-${app.id}`}
-                    value={cfg?.enabled ?? true}
-                    onValueChange={(val) => toggleEnabled(app.id, val)}
-                  />
-                </View>
-
-                {isExpanded && cfg && (
-                  <View style={styles.expandedArea}>
-                    <ThemedText type="small">{t.interventionStyle}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {INTERVENTION_TYPES.map((item) => {
-                        const active = cfg.interventionType === item.id;
-                        return (
-                          <Pressable
-                            key={item.id}
-                            onPress={() =>
-                              updateConfigField(app.id, 'interventionType', item.id)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {item.label}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <ThemedText type="small">{t.baseDuration}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {[3, 6, 10, 15].map((sec) => {
-                        const active = cfg.baseDurationSec === sec;
-                        return (
-                          <Pressable
-                            key={sec}
-                            onPress={() =>
-                              updateConfigField(app.id, 'baseDurationSec', sec)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {sec}s
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <ThemedText type="small">{t.dailyOpenLimit}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {[null, 3, 5, 10].map((lim) => {
-                        const active = cfg.dailyOpenLimit === lim;
-                        return (
-                          <Pressable
-                            key={String(lim)}
-                            onPress={() =>
-                              updateConfigField(app.id, 'dailyOpenLimit', lim)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {lim === null ? t.unlimited : `${lim}/day`}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <View style={styles.strictRow}>
-                      <ThemedText type="small">{t.strictBlockWhenLimit}</ThemedText>
-                      <Switch
-                        value={cfg.strictMode}
-                        onValueChange={(val) =>
-                          updateConfigField(app.id, 'strictMode', val)
-                        }
-                      />
-                    </View>
-
-                    <View style={styles.strictRow}>
-                      <ThemedText type="small">{t.workHoursSchedule}</ThemedText>
-                      <Switch
-                        testID={`schedule-work-${app.id}`}
-                        value={cfg.schedules.length > 0}
-                        onValueChange={(enabled) =>
-                          updateConfigField(
-                            app.id,
-                            'schedules',
-                            enabled
-                              ? [
-                                  {
-                                    days: [1, 2, 3, 4, 5],
-                                    startMinute: 9 * 60,
-                                    endMinute: 17 * 60,
-                                    mode: 'intervene',
-                                  },
-                                ]
-                              : []
-                          )
-                        }
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
-  );
+  return <Page>
+    <View style={[ui.row, { justifyContent: 'space-between' }]}><Copy title>Застосунки</Copy><Kicker>Blockit</Kicker></View>
+    {view?.demo && <View style={ui.notice}><Copy muted>Демо · без блокування інших застосунків</Copy></View>}
+    {error !== '' && <Card><Copy>{error}</Copy><Action label="Спробувати ще раз" secondary disabled={busy} onPress={() => run(refresh)} /></Card>}
+    {!view ? <Copy muted>Завантажуємо налаштування…</Copy> : view.count === 0 ? <>
+      <View style={{ gap: 14, paddingVertical: 12 }}>
+        <Text style={[ui.welcome, { fontFamily: 'Geist' }]}>Які застосунки{"\n"}відкриваєш за звичкою?</Text>
+        <Copy muted>Додай їх сюди. Перед відкриттям буде коротка пауза, щоб вирішити, чи це тобі потрібно.</Copy>
+      </View>
+      <Action label="Додати застосунки" disabled={busy} onPress={addApps} />
+      <View style={{ gap: 8 }}><Kicker>Для початку</Kicker><Copy>Пауза {view.seconds} секунд. {view.mode === 'countdown' ? 'Без додаткових завдань.' : modeLabel + '.'}</Copy></View>
+      <Action label="Спочатку спробувати паузу" secondary onPress={() => tryPause()} />
+    </> : <>
+      <View style={ui.statusLine}><View style={{ width: 7, height: 7, backgroundColor: view.enabled ? '#FAFAFA' : '#525252' }} /><Copy>{view.demo ? 'Обрано для демонстрації' : view.authorization !== 'approved' ? 'Потрібен доступ до Екранного часу' : view.enabled ? 'Захист увімкнено' : 'Захист вимкнено'}</Copy></View>
+      <View style={{ gap: 0 }}>
+        {view.demo ? view.apps.map(id => <View key={id} style={ui.appRow}>
+          <View style={ui.appMark}><Text style={ui.appMarkText}>{previewApps.find(app => app.id === id)?.name.slice(0, 1)}</Text></View>
+          <View style={{ flex: 1, gap: 2 }}><Copy>{previewApps.find(app => app.id === id)?.name}</Copy><Copy muted>{view.seconds} с · {modeLabel.toLowerCase()}</Copy></View>
+          <Action label="Спробувати" secondary onPress={() => tryPause(id)} />
+        </View>) : <Card><Copy title>Обрано застосунків: {view.count}</Copy><Copy muted>Переглянути назви та змінити вибір можна в системному списку iPhone.</Copy></Card>}
+      </View>
+      <Action label={view.demo ? 'Змінити список' : 'Змінити застосунки'} disabled={busy} onPress={addApps} />
+      <View style={{ gap: 12, borderTopWidth: 1, borderColor: '#2E2E2E', paddingTop: 24 }}>
+        <Kicker>Перед відкриттям</Kicker><Copy>{view.seconds} секунд · {modeLabel}</Copy>
+        <Action label="Змінити правило" secondary onPress={() => router.push('/explore')} />
+      </View>
+      {!view.demo && <Action label="Перевірити приклад паузи" secondary onPress={() => tryPause()} />}
+      {!view.demo && view.authorization === 'approved' && <Action label={view.enabled ? 'Вимкнути захист' : 'Увімкнути захист'} secondary disabled={busy} onPress={() => run(() => saveRule(view, { enabled: !view.enabled }))} />}
+    </>}
+  </Page>;
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100, gap: 14 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  header: { flex: 1, gap: 4 },
-  langPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  subtitle: { opacity: 0.7 },
-  summaryRow: { flexDirection: 'row', gap: 10 },
-  summaryCard: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(128,128,128,0.1)',
-    gap: 4,
-  },
-  sectionTitle: { marginTop: 6 },
-  appCard: {
-    borderRadius: 14,
-    padding: 14,
-    backgroundColor: 'rgba(128,128,128,0.08)',
-    gap: 12,
-  },
-  appHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  appTitleArea: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  appMeta: { flex: 1, gap: 2 },
-  previewButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(32, 138, 239, 0.14)',
-  },
-  previewText: { color: '#208AEF' },
-  expandedArea: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-    paddingTop: 12,
-    gap: 8,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  chipActive: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipTextActive: { color: '#FFFFFF' },
-  strictRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-});

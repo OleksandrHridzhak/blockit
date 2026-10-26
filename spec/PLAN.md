@@ -1,3 +1,5 @@
+> Archived Shortcuts-era document. Current design and release checks: context-blockit.md and SCREEN_TIME_QA.md.
+
 # План v2: клон one sec (Blockit), спершу iOS, Expo / React Native
 
 > [!IMPORTANT]

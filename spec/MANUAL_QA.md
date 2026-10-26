@@ -1,3 +1,5 @@
+> Archived Shortcuts-era document. Current design and release checks: context-blockit.md and SCREEN_TIME_QA.md.
+
 # Manual QA checklist (real iPhone via Sideloadly)
 
 Install via **Sideloadly** from the latest `ios-build` workflow artifacts:

@@ -7,7 +7,9 @@ node_modules/
 .expo/
 dist/
 dist-artifacts/
+*.ipa
 web-build/
+web-preview/
 expo-env.d.ts
 
 # Native

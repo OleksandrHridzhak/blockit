@@ -2,11 +2,11 @@
   "expo": {
     "name": "Blockit",
     "slug": "blockit",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "blockit",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.hridzhak.blockit",
@@ -47,15 +47,13 @@
     "plugins": [
       "expo-router",
       "expo-dev-client",
-      "./plugins/withAppIntent",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#121212"
         }
-      ]
+      ],
+      "./plugins/withScreenTime"
     ],
     "experiments": {
       "typedRoutes": true,
