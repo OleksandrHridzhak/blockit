@@ -51,6 +51,10 @@ npx eas-cli@latest submit --platform ios --profile production --path outputs/git
 
 The IPA already contains its build number. Keep the remote EAS build number in sync after submission so a later EAS build does not reuse it. Submission success confirms delivery to Apple; TestFlight processing and tester availability are separate checks.
 
+If the free EAS Submit queue is long, `scripts/submit-apple-direct.cjs` uploads the already-signed IPA through Apple's documented Build Uploads API. Set `BLOCKIT_EAS_CLI_DIR` to the installed `eas-cli` package directory and run `node scripts/submit-apple-direct.cjs 21` for `outputs/github-ipa-21/Blockit.ipa`. It uses the existing local Expo sign-in to resolve the app's configured App Store Connect key, keeps the key and JWTs in memory, and sends them only to Apple. It never transfers the upload key to GitHub. The local state file in `outputs/` contains resource IDs and status, without keys or signed storage URLs. Recheck this integration when updating EAS CLI because credential resolution uses its internal modules.
+
+Cancel any queued EAS Submit attempt for the same build before using direct upload. The script resumes an existing Apple upload when possible, waits for processing, and adds a valid build to the existing `Blockit Device Testing` internal group.
+
 Provision the host and all three extension bundle IDs with Family Controls and App Group group.com.hridzhak.blockit.2WT689Y795. Distribution requires Apple's approval for Family Controls on each target. Existing free-account sideload steps do not establish support for these entitlements.
 
 Enable **Family Controls (Distribution)** explicitly on each of the four App IDs in Apple Developer. EAS capability sync can enable only the Development checkbox for newly registered extensions; an App Store profile generated at that point will omit the entitlement. After enabling Distribution, regenerate the affected Blockit extension profiles. Reusing the existing distribution certificate does not revoke it or alter other apps.
