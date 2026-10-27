@@ -37,6 +37,8 @@ def main():
         return
     folder.mkdir(mode=0o700, exist_ok=True)
     payload = json.loads(gzip.decompress(base64.b64decode(os.environ.pop("BLOCKIT_IOS_SIGNING"))))
+    for value in payload.values():
+        print("::add-mask::" + value["password"], flush=True)
     password = secrets.token_urlsafe(32)
     command(["security", "create-keychain", "-p", password, str(keychain)])
     command(["security", "set-keychain-settings", "-lut", "21600", str(keychain)])
@@ -45,8 +47,10 @@ def main():
     profiles = {}
     imports = set()
     certificate_sha = None
-    profile_folder = Path.home() / "Library/MobileDevice/Provisioning Profiles"
-    profile_folder.mkdir(parents=True, exist_ok=True)
+    profile_folders = [Path.home() / "Library/MobileDevice/Provisioning Profiles",
+                       Path.home() / "Library/Developer/Xcode/UserData/Provisioning Profiles"]
+    for folder_path in profile_folders:
+        folder_path.mkdir(parents=True, exist_ok=True)
     for target, bundle in TARGETS.items():
         value = payload[target]
         profile_file = folder / (target + ".mobileprovision")
@@ -59,7 +63,8 @@ def main():
         assert GROUP in entitlements.get("com.apple.security.application-groups", []), "App Group entitlement missing"
         assert not profile.get("ProvisionedDevices") and not profile.get("ProvisionsAllDevices"), "An App Store profile is required"
         assert profile["ExpirationDate"] > datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), "Expired profile"
-        shutil.copyfile(profile_file, profile_folder / (profile["UUID"] + ".mobileprovision"))
+        for folder_path in profile_folders:
+            shutil.copyfile(profile_file, folder_path / (profile["UUID"] + ".mobileprovision"))
         profiles[target] = {"bundle": bundle, "uuid": profile["UUID"], "name": profile["Name"]}
         cert = base64.b64decode(value["certificate"])
         digest = hashlib.sha256(cert).hexdigest()

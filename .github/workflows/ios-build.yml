@@ -157,7 +157,7 @@ jobs:
           import glob, re, subprocess
           paths = [p for p in glob.glob('/Applications/Xcode_*.app') if re.search(r'Xcode_[0-9.]+\.app$', p)]
           if paths:
-              chosen = max(paths, key=lambda p: tuple(map(int, re.search(r'Xcode_([0-9.]+)', p)[1].split('.'))))
+              chosen = max(paths, key=lambda p: tuple(map(int, re.findall(r'\d+', p.split('/')[-1]))))
               subprocess.run(['sudo', 'xcode-select', '-s', chosen + '/Contents/Developer'], check=True)
           PY
           xcodebuild -version
