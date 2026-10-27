@@ -22,13 +22,15 @@ enum ScreenTimeStore {
     let event: String
     let request: String
     let detail: String
+    var process: String? = nil
   }
   static func trace(_ event: String, id: String = "", detail: String = "") {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
     let folder = root.appendingPathComponent("monitor-trace", isDirectory: true)
     do {
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-      let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event, request: String(id.prefix(8)), detail: detail)
+      let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event, request: String(id.prefix(8)), detail: detail,
+        process: Bundle.main.bundleIdentifier ?? "unknown")
       let name = String(format: "%.3f", value.timestamp) + "-" + UUID().uuidString + ".json"
       try JSONEncoder().encode(value).write(to: folder.appendingPathComponent(name), options: .atomic)
       let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).sorted { $0.lastPathComponent < $1.lastPathComponent }
@@ -92,6 +94,7 @@ enum ScreenTimeStore {
     let id: String
     let token: ApplicationToken
     let until: Double
+    var monitorID: String? = nil
   }
   struct ScheduledGrant: Codable {
     let token: ApplicationToken
@@ -203,7 +206,7 @@ enum ScreenTimeStore {
     guard let keep = try? transaction({ () -> Set<String> in
       var ids = Set<String>()
       if let request = pending { ids.insert(request.id) }
-      if let grant = read("grant", Grant.self) { ids.insert(grant.id) }
+      if let grant = read("grant", Grant.self) { ids.insert(grant.monitorID ?? grant.id) }
       if let scheduled = read("scheduledGrant", ScheduledGrant.self) { ids.insert(scheduled.window.requestID) }
       let requestIDs = ids
       ids.formUnion(requestIDs.map { $0 + ".expiry" })
@@ -217,7 +220,10 @@ enum ScreenTimeStore {
     var tokens = selection.applicationTokens
     if let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
       tokens.remove(grant.token)
-    } else { defaults.removeObject(forKey: "grant") }
+    } else {
+      if let grant = read("grant", Grant.self) { trace("expired-grant-reconciled", id: grant.id) }
+      defaults.removeObject(forKey: "grant")
+    }
     settings.shield.applications = tokens.isEmpty ? nil : tokens
     // Categories and websites are deliberately not supported in this release.
     settings.shield.applicationCategories = nil
@@ -251,20 +257,21 @@ enum ScreenTimeStore {
     }
   }
   static func schedule(_ window: AccessWindow, token: ApplicationToken) throws {
-    var calendar = Calendar.current
-    calendar.timeZone = TimeZone.current
-    let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
-    func dateComponents(_ timestamp: TimeInterval) -> DateComponents {
-      var value = calendar.dateComponents(components, from: Date(timeIntervalSince1970: timestamp))
-      value.calendar = calendar
-      value.timeZone = calendar.timeZone
-      return value
+    let calendar = Calendar.current
+    func schedule(for interval: MonitoringInterval) -> DeviceActivitySchedule {
+      DeviceActivitySchedule(intervalStart: interval.components(at: interval.startsAt, calendar: calendar),
+        intervalEnd: interval.components(at: interval.endsAt, calendar: calendar), repeats: false)
+    }
+    func verify(_ id: DeviceActivityName, interval: MonitoringInterval) throws {
+      let next = center.schedule(for: id)?.nextInterval
+      trace("schedule-readback", id: window.requestID,
+        detail: "role=\(id.rawValue.hasSuffix(".expiry") ? "expiry" : "access") start=\(next?.start.timeIntervalSince1970 ?? 0) end=\(next?.end.timeIntervalSince1970 ?? 0)")
+      guard interval.matches(next) else { throw Failure.monitoringUnavailable }
     }
     trace("schedule", id: window.requestID, detail: "start=\(window.startsAt) expiry=\(window.endsAt)")
     // Calendar expiry remains a wall-clock fallback when the user leaves the app.
     let expiry = DeviceActivityName(window.expiryMonitorID)
-    try center.startMonitoring(expiry, during: DeviceActivitySchedule(
-      intervalStart: dateComponents(window.endsAt), intervalEnd: dateComponents(window.expiryMonitorEndsAt), repeats: false))
+    let access = DeviceActivityName(window.requestID)
     let threshold = DateComponents(minute: window.usageSeconds / 60, second: window.usageSeconds % 60)
     let event: DeviceActivityEvent
     if #available(iOS 17.4, *) {
@@ -273,13 +280,14 @@ enum ScreenTimeStore {
       event = DeviceActivityEvent(applications: [token], threshold: threshold)
     }
     do {
-      try center.startMonitoring(.init(window.requestID), during: DeviceActivitySchedule(
-        intervalStart: dateComponents(window.startsAt), intervalEnd: dateComponents(window.monitorEndsAt), repeats: false),
-        events: [.init("access-used"): event])
+      try center.startMonitoring(expiry, during: schedule(for: window.expiryInterval))
+      try center.startMonitoring(access, during: schedule(for: window.accessInterval), events: [.init("access-used"): event])
+      try verify(access, interval: window.accessInterval)
+      try verify(expiry, interval: window.expiryInterval)
       trace("scheduled", id: window.requestID, detail: "usageSeconds=\(window.usageSeconds)")
     } catch {
       trace("schedule-failed", id: window.requestID, detail: error.localizedDescription)
-      center.stopMonitoring([expiry])
+      center.stopMonitoring([expiry, access])
       throw error
     }
   }
@@ -361,31 +369,22 @@ enum ScreenTimeStore {
       guard let grant = read("grant", Grant.self) else { return false }
       return grant.id == id && grant.until > Date().timeIntervalSince1970
     }) { return }
-    let scheduledCountdown = try transaction { () throws -> Bool in
-      if let grant = read("grant", Grant.self), grant.id == id, grant.until > Date().timeIntervalSince1970 { return true }
-      let request = try validateFinish(id: id, answer: answer)
-      return request.mode == "countdown" && read("scheduledGrant", ScheduledGrant.self)?.window.requestID == id
-    }
-    if scheduledCountdown {
-      if try activateCountdown(id: id) { return }
-      guard try transaction({
-        guard let grant = read("grant", Grant.self) else { return false }
-        return grant.id == id && grant.until > Date().timeIntervalSince1970
-      }) else { throw Failure.invalidRequest }
-      return
-    }
     let request = try transaction { () throws -> Request in
       let request = try validateFinish(id: id, answer: answer)
       defaults.removeObject(forKey: "grant")
       apply()
       return request
     }
-    let window = AccessWindow(requestID: id, readyAt: Date().timeIntervalSince1970, now: Date().timeIntervalSince1970, sessionMinutes: request.sessionMinutes ?? 15)
+    let window = AccessWindow(activeRequestID: id, now: Date().timeIntervalSince1970, sessionMinutes: request.sessionMinutes ?? 15)
     // Registration is outside the shared lock, and must succeed before unshielding.
     try schedule(window, token: request.token)
     try transaction {
+      // Another completion (or the original start callback) may have won while
+      // DeviceActivity IPC was in flight. Finishing the same request is idempotent.
+      if let grant = read("grant", Grant.self), grant.id == id,
+         grant.until > Date().timeIntervalSince1970 { return }
       _ = try validateFinish(id: id, answer: answer)
-      write("grant", Grant(id: id, token: request.token, until: window.endsAt))
+      write("grant", Grant(id: id, token: request.token, until: window.endsAt, monitorID: window.requestID))
       trace("grant-opened", id: id, detail: "expiry=\(window.endsAt)")
       record(request, outcome: "continued")
       clearRequest()
@@ -406,12 +405,13 @@ enum ScreenTimeStore {
     return request
   }
   enum Failure: LocalizedError {
-    case invalidRequest, answer, sharedStore
+    case invalidRequest, answer, sharedStore, monitoringUnavailable
     var errorDescription: String? {
       switch self {
       case .invalidRequest: return "Пауза ще триває або запит застарів. Повернися до заблокованого застосунку й спробуй знову."
       case .answer: return "Заверши завдання, щоб отримати доступ."
       case .sharedStore: return "Немає доступу до спільних налаштувань. Потрібна збірка з дозволами Family Controls та App Group."
+      case .monitoringUnavailable: return "iOS не підтвердила час повторного блокування. Доступ залишено закритим. Спробуй ще раз або надішли діагностику."
       }
     }
   }

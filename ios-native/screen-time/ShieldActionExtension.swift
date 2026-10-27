@@ -29,8 +29,10 @@ final class ShieldActionExtension: ShieldActionDelegate {
       }
       let request = try ScreenTimeStore.transaction { try ScreenTimeStore.request(for: application) }
       if request.mode == "countdown" {
-        // First recover a ready request if iOS delayed the monitor callback.
-        if try ScreenTimeStore.activateCountdown(id: request.id) {
+        // A manual recovery needs fresh active monitoring, just like finishing
+        // in the host. Never reuse an unacknowledged future registration.
+        if request.readyAt <= Date().timeIntervalSince1970 {
+          try ScreenTimeStore.finish(id: request.id, answer: "")
           completionHandler(.none)
         } else {
           _ = try ScreenTimeStore.scheduleCountdown(request)

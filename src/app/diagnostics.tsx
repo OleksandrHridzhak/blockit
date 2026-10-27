@@ -4,10 +4,12 @@ import { router } from 'expo-router';
 import { Action, ListRow, ListSection, Page, ui } from '@/components/protection-ui';
 import { screenTime } from '@/features/screen-time/client';
 
-interface Trace { time: number; event: string; request: string; detail: string }
+interface Trace { time: number; event: string; request: string; detail: string; process?: string }
 interface Diagnostics { build: string; ios: string; grantUntil: number; activities: unknown[]; trace: Trace[] }
 const eventNames: Record<string, string> = {
   'monitor-loaded': 'Системне розширення запущено',
+  'schedule-readback': 'iOS повернула запланований інтервал',
+  'expired-grant-reconciled': 'Прострочений доступ закрито під час оновлення стану',
   schedule: 'Планування доступу', scheduled: 'Доступ заплановано', 'schedule-failed': 'Помилка планування',
   'grant-opened': 'Доступ відкрито', 'interval-start': 'Початок системного інтервалу', 'interval-end': 'Кінець системного інтервалу',
   'usage-threshold': 'Досягнуто час використання', 'expiry-stale': 'Сигнал попередньої сесії',

@@ -17,10 +17,11 @@ public class ScreenTimeModule: Module {
                 "start": next?.start.timeIntervalSince1970 ?? 0, "end": next?.end.timeIntervalSince1970 ?? 0,
                 "events": ScreenTimeStore.center.events(for: activity).count]
       }
-      let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail] as [String: Any] }
+      let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail, "process": $0.process ?? "unknown"] as [String: Any] }
       let data: [String: Any] = ["ios": UIDevice.current.systemVersion,
         "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
         "now": Date().timeIntervalSince1970, "grantUntil": grant?.until ?? 0,
+        "grantMonitor": grant?.monitorID ?? grant?.id ?? "",
         "shieldedApps": ScreenTimeStore.settings.shield.applications?.count ?? 0,
         "lastError": ScreenTimeStore.read("lastFailure", ScreenTimeStore.LastFailure.self)?.detail ?? "",
         "activities": activities, "trace": traces]
@@ -33,8 +34,14 @@ public class ScreenTimeModule: Module {
       }
     }
     AsyncFunction("getStatus") { () async throws -> [String: Any] in
-      if let id = try ScreenTimeStore.transaction({ ScreenTimeStore.read("scheduledGrant", ScreenTimeStore.ScheduledGrant.self)?.window.requestID }) {
-        try ScreenTimeStore.activateCountdown(id: id)
+      let readyID = try ScreenTimeStore.transaction { () -> String? in
+        guard let request = ScreenTimeStore.pending, request.mode == "countdown",
+          request.readyAt <= Date().timeIntervalSince1970,
+          ScreenTimeStore.read("scheduledGrant", ScreenTimeStore.ScheduledGrant.self)?.window.requestID == request.id else { return nil }
+        return request.id
+      }
+      if let id = readyID {
+        try ScreenTimeStore.finish(id: id, answer: "")
       }
       try ScreenTimeStore.transaction { ScreenTimeStore.apply() }
       let notifications = await UNUserNotificationCenter.current().notificationSettings()

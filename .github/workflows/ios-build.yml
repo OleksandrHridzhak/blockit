@@ -15,7 +15,7 @@ on:
       build_number:
         description: Unused App Store build number
         type: string
-        default: '20'
+        default: '21'
 
 concurrency:
   group: ios-build-${{ github.ref }}

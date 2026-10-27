@@ -27,8 +27,9 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     // Ignore delayed callbacks from a replaced session.
     try? ScreenTimeStore.transaction {
       if let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self),
-         grant.id == activity.rawValue, grant.until <= Date().timeIntervalSince1970 {
+         (grant.monitorID ?? grant.id) == activity.rawValue, grant.until <= Date().timeIntervalSince1970 {
         ScreenTimeStore.defaults.removeObject(forKey: "grant")
+        ScreenTimeStore.trace("shield-restored", id: grant.id, detail: "access-interval-ended")
       }
       if ScreenTimeStore.read("scheduledGrant", ScreenTimeStore.ScheduledGrant.self)?.window.requestID == activity.rawValue {
         ScreenTimeStore.clearRequest()
@@ -47,7 +48,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
   private func expireGrant(id: String) {
     do {
       try ScreenTimeStore.transaction {
-        guard let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self), grant.id == id else {
+        guard let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self), (grant.monitorID ?? grant.id) == id else {
           ScreenTimeStore.trace("expiry-stale", id: id)
           return
         }

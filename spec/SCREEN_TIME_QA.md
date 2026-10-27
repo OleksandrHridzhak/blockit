@@ -19,6 +19,8 @@ Do not call this release production ready until the signed device checks below p
 TypeScript, lint, unit tests, generated Xcode structure and browser UI can be checked on Windows. They do not validate Apple entitlements, Swift compilation, shield delivery, app switching or monitor scheduling.
 
 ## Short access and automatic return regression
+- On iOS 16, finish a countdown from the host after it was registered in the shield extension. The grant must get a fresh, already-active `.active` monitor, not reuse the earlier future pause interval. `schedule-readback` must match both planned intervals before unshielding. A missing or wrong-day interval must keep access closed.
+- Let a delayed end/expiry callback for the original pause arrive after the fresh grant. It must not clear that grant or its active monitoring. A second completion of the same request must remain idempotent.
 - Start a fresh one-minute grant after installing the new build. Remain in the guarded app for at least 90 seconds without opening Blockit. Check that the shield returns, then repeat with two minutes, host force-quit, device lock/unlock, and a different selected app.
 - After a failure, open Settings → Діагностика блокування. Share the local report. `usage-threshold`, `interval-start`, and `shield-restored` distinguish absent callbacks from an early callback or a shield update failure. The report never contains application tokens.
 - Select the correct return destination on the real pause screen once. With Blockit in the foreground, countdown completion must grant access before opening that destination. Preview never launches another app. Failed grant never launches the destination. Failed app launch keeps the granted access and provides manual recovery.
