@@ -4,6 +4,7 @@ module.exports = {
     {
       // Pure TS logic (src/core & src/storage): plain node env, fast, no RN mocks.
       displayName: 'core',
+      modulePathIgnorePatterns: ['<rootDir>/outputs/'],
       preset: 'jest-expo',
       testEnvironment: 'node',
       testMatch: ['<rootDir>/src/core/**/*.test.ts', '<rootDir>/src/storage/**/*.test.ts'],
@@ -11,6 +12,7 @@ module.exports = {
     {
       // Components & screens with React Native Testing Library.
       displayName: 'ui',
+      modulePathIgnorePatterns: ['<rootDir>/outputs/'],
       preset: 'jest-expo/ios',
       testMatch: ['<rootDir>/src/**/*.test.tsx'],
     },

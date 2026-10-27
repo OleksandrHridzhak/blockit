@@ -1,357 +1,366 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { APP_CATALOG } from '@/core/catalog';
-import { AppRuleConfig, AppUsageState, InterventionType } from '@/core/types';
-import { getTranslations, Locale } from '@/i18n/strings';
+import { router, useFocusEffect, type Href } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
-  getUserPreferences,
-  saveUserPreferences,
-  UserPreferences,
-} from '@/storage/preferences';
+  Action,
+  AppBadge,
+  appleTheme,
+  ListRow,
+  ListSection,
+  Page,
+  ui,
+} from '@/components/protection-ui';
+import { useProtection } from '@/hooks/use-protection';
 import {
-  getAllAppConfigs,
-  getAllAppUsageStates,
-  saveAppConfig,
-} from '@/storage/repository';
-
-const INTERVENTION_TYPES: readonly { id: InterventionType; label: string }[] = [
-  { id: 'breathing', label: 'Breathing' },
-  { id: 'countdown', label: 'Countdown' },
-  { id: 'reflection', label: 'Reflection' },
-  { id: 'typing', label: 'Typing' },
-];
+  getAppRule,
+  getEffectiveSeconds,
+  previewApps,
+} from '@/features/preview/store';
+import { screenTime } from '@/features/screen-time/client';
+import { getCatalogApp } from '@/core/catalog';
+import { groupsService } from '@/features/groups/service';
+import type { AppGroup } from '@/features/screen-time/client';
+import { FamilyAppLabel } from '@/components/family-app-label';
+import { EditorialIcon } from '@/components/editorial-icon';
+import { appCuriosityEnabled, curiosityEnabled } from '@/features/curiosity/storage';
+import { hasPauseTimer, isMicrolearning, microlearningRoute } from '@/core/pause-mode-settings';
 
 export default function HomeScreen() {
-  const [configs, setConfigs] = useState<Record<string, AppRuleConfig>>(() =>
-    getAllAppConfigs()
-  );
-  const [states, setStates] = useState<Record<string, AppUsageState>>(() =>
-    getAllAppUsageStates()
-  );
-  const [prefs, setPrefs] = useState<UserPreferences>(() => getUserPreferences());
-  const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [expandedAppId, setExpandedAppId] = useState<string | null>(null);
+  const { view, busy, error, run, refresh } = useProtection();
+  const [groups, setGroups] = useState<AppGroup[]>([]);
+  const [groupError, setGroupError] = useState('');
+  const [now, setNow] = useState(() => Date.now());
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    groupsService.load().then(data => { if (alive) { setGroups(data.groups); setGroupError(''); } })
+      .catch(e => { if (alive) setGroupError(e instanceof Error ? e.message : 'Не вдалося завантажити групи.'); });
+    return () => { alive = false; };
+  }, []));
+  useEffect(() => {
+    if (!view?.snoozeUntil) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [view?.snoozeUntil]);
 
-  const t = getTranslations(prefs.locale);
+  const getModeLabel = (mode?: string) =>
+    mode === 'microlearning-v2' ? 'Microlearning v2'
+      : mode === 'microlearning' ? 'Microlearning'
+      : mode === 'stroop'
+      ? 'Тест Струпа'
+      : mode === 'math'
+      ? 'Математика'
+      : mode === 'passcode'
+      ? 'Введення коду'
+      : mode === 'breathing'
+      ? 'Дихання'
+      : mode === 'typing'
+      ? 'Написати фразу'
+      : mode === 'reflection'
+      ? 'Обрати намір'
+      : 'Звичайна пауза';
 
-  const refresh = useCallback(() => {
-    const currentNow = Date.now();
-    setNowMs(currentNow);
-    setConfigs(getAllAppConfigs());
-    setStates(getAllAppUsageStates(currentNow));
-    setPrefs(getUserPreferences());
-  }, []);
+  const isSnoozed = Boolean(view?.snoozeUntil && view.snoozeUntil > now);
+  const snoozeEndTime = isSnoozed && view?.snoozeUntil
+    ? new Date(view.snoozeUntil).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
-  useFocusEffect(
-    useCallback(() => {
-      refresh();
-    }, [refresh])
-  );
-
-  const toggleLocale = () => {
-    const nextLocale: Locale = prefs.locale === 'uk' ? 'en' : 'uk';
-    setPrefs(saveUserPreferences({ locale: nextLocale }));
+  const addApps = () => {
+    if (!view) return;
+    if (view.demo) {
+      router.push('/select-apps');
+      return;
+    }
+    run(async () => {
+      if (view.authorization !== 'approved') await screenTime.authorize();
+      await screenTime.pick();
+      setGroups(await screenTime.groups());
+    });
   };
 
-  const toggleEnabled = (appId: string, enabled: boolean) => {
-    const current = configs[appId];
-    if (!current) return;
-    const updated = saveAppConfig({ ...current, enabled });
-    setConfigs((prev) => ({ ...prev, [appId]: updated }));
+  const tryPause = (appId?: string) => {
+    if (appId && isMicrolearning(getAppRule(appId).mode)) {
+      router.push({ pathname: microlearningRoute(getAppRule(appId).mode), params: { preview: '1', seconds: String(getAppRule(appId).seconds) } } as unknown as Href);
+      return;
+    }
+    if (appId && appCuriosityEnabled(appId, 'legacy')) {
+      router.push({ pathname: '/curiosity', params: { preview: '1' } });
+      return;
+    }
+    const appEntry = previewApps.find((item) => item.id === appId);
+    const rule = getAppRule(appId);
+    const effectiveSec = getEffectiveSeconds(rule);
+
+    router.push({
+      pathname: '/intervene',
+      params: {
+        preview: '1',
+        seconds: String(effectiveSec),
+        mode: rule.mode,
+        label: appEntry?.name ?? 'обраного застосунку',
+        sessionMinutes: String(rule.sessionMinutes ?? 5),
+        appId: appId ?? '',
+        rounds: String((rule.mode === 'math' ? rule.mathRounds : rule.mode === 'stroop' ? rule.stroopRounds : rule.rounds) ?? 3),
+        codeLength: String(rule.codeLength ?? 6),
+      },
+    });
   };
 
-  const updateConfigField = <K extends keyof AppRuleConfig>(
-    appId: string,
-    key: K,
-    value: AppRuleConfig[K]
-  ) => {
-    const current = configs[appId];
-    if (!current) return;
-    const updated = saveAppConfig({ ...current, [key]: value });
-    setConfigs((prev) => ({ ...prev, [appId]: updated }));
+  const editAppRule = (appId: string) => {
+    router.push({
+      pathname: '/app-rule',
+      params: { appId },
+    });
   };
-
-  const totalAttempts = Object.values(states).reduce((sum, s) => sum + s.attemptsToday, 0);
-  const totalDismissals = Object.values(states).reduce(
-    (sum, s) => sum + s.dismissalsToday,
-    0
-  );
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <View style={styles.headerRow}>
-            <View style={styles.header}>
-              <ThemedText type="title">{t.homeTitle}</ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.homeSubtitle}
-              </ThemedText>
-            </View>
-            <Pressable
-              testID="toggle-locale"
-              onPress={toggleLocale}
-              style={styles.langPill}>
-              <ThemedText type="smallBold">
-                {prefs.locale === 'uk' ? '🇺🇦 UK' : '🇬🇧 EN'}
-              </ThemedText>
-            </Pressable>
+    <Page>
+      {/* iOS Large Title Header */}
+      <View style={styles.headerContainer}>
+        <Text style={ui.largeTitle}>Застосунки</Text>
+      </View>
+
+      {/* Snooze indicator banner if active */}
+      {isSnoozed && (
+        <Pressable
+          onPress={() => router.push('/explore')}
+          style={styles.snoozeBanner}
+        >
+          <Text style={styles.snoozeBannerText}>
+            ⏸️ Обмеження призупинено до {snoozeEndTime}
+          </Text>
+        </Pressable>
+      )}
+
+      {error !== '' && (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Action
+            label="Спробувати ще раз"
+            secondary
+            disabled={busy}
+            onPress={() => run(refresh)}
+          />
+        </View>
+      )}
+
+      {view && !view.demo && !view.notifications && <ListSection title="ПЕРЕХІД У BLOCKIT" footer="Торкнися сповіщення після початку паузи. Якщо його немає — відкрий Blockit вручну.">
+        <ListRow showSeparator={false} onPress={() => run(async () => {
+          const allowed = await screenTime.notifications();
+          if (!allowed) throw new Error('Сповіщення вимкнені. Увімкни їх для Blockit у налаштуваннях iPhone або відкривай Blockit вручну.');
+        })}><Text style={styles.addAppLabel}>Дозволити сповіщення Blockit</Text></ListRow>
+      </ListSection>}
+      {!view ? (
+        <View style={styles.loadingContainer}>
+          <Text style={styles.mutedText}>Завантажуємо налаштування…</Text>
+        </View>
+      ) : view.apps.length === 0 ? (
+        /* Empty State */
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconCircle}>
+            <Text style={{ fontSize: 34 }}>⏳</Text>
           </View>
+          <Text style={styles.emptyTitle}>
+            Які застосунки відкриваєш за звичкою?
+          </Text>
+          <Text style={styles.emptySubtitle}>
+            Додай їх сюди. Перед відкриттям кожного додатка діятиме легка усвідомлена пауза, яку можна налаштувати окремо.
+          </Text>
 
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle" testID="home-total-attempts">
-                {totalAttempts}
-              </ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.attemptsToday}
-              </ThemedText>
-            </View>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle" testID="home-total-dismissed">
-                {totalDismissals}
-              </ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.mindfulExits}
-              </ThemedText>
-            </View>
-            <View style={styles.summaryCard}>
-              <ThemedText type="subtitle">{totalDismissals * 8}m</ThemedText>
-              <ThemedText type="small" style={styles.subtitle}>
-                {t.estSaved}
-              </ThemedText>
-            </View>
+          <View style={{ width: '100%', gap: 12, marginTop: 12 }}>
+            <Action
+              label="Додати застосунки"
+              disabled={busy}
+              onPress={addApps}
+            />
+            <Action
+              label="Спробувати приклад паузи"
+              secondary
+              onPress={() => tryPause()}
+            />
           </View>
+        </View>
+      ) : (
+        /* Blocked Apps List with Add row as last item */
+        <ListSection
+          title="ОБРАНІ ЗАСТОСУНКИ"
+          footer="Тут окремі застосунки з власними налаштуваннями. Застосунки у групах показано всередині груп."
+        >
+          {view.demo ? (
+            view.apps.map((id) => {
+              const catalog = getCatalogApp(id);
+              const name =
+                catalog?.name ??
+                previewApps.find((app) => app.id === id)?.name ??
+                id;
 
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            {t.guardedApps}
-          </ThemedText>
+              const appRule = getAppRule(id);
+              const curiosity = appCuriosityEnabled(id, 'legacy');
+              const effectiveSec = curiosity ? appRule.seconds : getEffectiveSeconds(appRule);
+              const ruleLabel = curiosity ? 'Curiosity Mode' : getModeLabel(appRule.mode);
+              const opensToday = appRule.todayOpens ?? 0;
 
-          {APP_CATALOG.map((app) => {
-            const cfg = configs[app.id];
-            const st = states[app.id];
-            const isExpanded = expandedAppId === app.id;
-            const bypassRemainingMin =
-              st?.bypassUntilMs && st.bypassUntilMs > nowMs
-                ? Math.ceil((st.bypassUntilMs - nowMs) / 60_000)
-                : 0;
-
-            return (
-              <View key={app.id} style={styles.appCard}>
-                <View style={styles.appHeader}>
-                  <Pressable
-                    style={styles.appTitleArea}
-                    testID={`app-row-${app.id}`}
-                    onPress={() => setExpandedAppId(isExpanded ? null : app.id)}>
-                    <View style={[styles.dot, { backgroundColor: app.accentColor }]} />
-                    <View style={styles.appMeta}>
-                      <ThemedText type="smallBold">{app.name}</ThemedText>
-                      <ThemedText type="small" style={styles.subtitle}>
-                        {cfg?.interventionType ?? 'breathing'} · {cfg?.baseDurationSec ?? 6}s
-                        {bypassRemainingMin > 0
-                          ? ` · bypass ${bypassRemainingMin}m`
-                          : st?.attemptsToday
-                            ? ` · ${st.attemptsToday} today`
-                            : ''}
-                      </ThemedText>
-                    </View>
-                  </Pressable>
-
-                  <Pressable
-                    testID={`preview-${app.id}`}
-                    onPress={() => router.push(`/intervene?app=${app.id}`)}
-                    style={styles.previewButton}>
-                    <ThemedText type="small" style={styles.previewText}>
-                      {t.pauseButton}
-                    </ThemedText>
-                  </Pressable>
-
-                  <Switch
-                    testID={`switch-${app.id}`}
-                    value={cfg?.enabled ?? true}
-                    onValueChange={(val) => toggleEnabled(app.id, val)}
-                  />
-                </View>
-
-                {isExpanded && cfg && (
-                  <View style={styles.expandedArea}>
-                    <ThemedText type="small">{t.interventionStyle}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {INTERVENTION_TYPES.map((item) => {
-                        const active = cfg.interventionType === item.id;
-                        return (
-                          <Pressable
-                            key={item.id}
-                            onPress={() =>
-                              updateConfigField(app.id, 'interventionType', item.id)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {item.label}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <ThemedText type="small">{t.baseDuration}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {[3, 6, 10, 15].map((sec) => {
-                        const active = cfg.baseDurationSec === sec;
-                        return (
-                          <Pressable
-                            key={sec}
-                            onPress={() =>
-                              updateConfigField(app.id, 'baseDurationSec', sec)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {sec}s
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <ThemedText type="small">{t.dailyOpenLimit}</ThemedText>
-                    <View style={styles.chipRow}>
-                      {[null, 3, 5, 10].map((lim) => {
-                        const active = cfg.dailyOpenLimit === lim;
-                        return (
-                          <Pressable
-                            key={String(lim)}
-                            onPress={() =>
-                              updateConfigField(app.id, 'dailyOpenLimit', lim)
-                            }
-                            style={[styles.chip, active && styles.chipActive]}>
-                            <ThemedText
-                              type="small"
-                              style={active ? styles.chipTextActive : undefined}>
-                              {lim === null ? t.unlimited : `${lim}/day`}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    <View style={styles.strictRow}>
-                      <ThemedText type="small">{t.strictBlockWhenLimit}</ThemedText>
-                      <Switch
-                        value={cfg.strictMode}
-                        onValueChange={(val) =>
-                          updateConfigField(app.id, 'strictMode', val)
-                        }
-                      />
-                    </View>
-
-                    <View style={styles.strictRow}>
-                      <ThemedText type="small">{t.workHoursSchedule}</ThemedText>
-                      <Switch
-                        testID={`schedule-work-${app.id}`}
-                        value={cfg.schedules.length > 0}
-                        onValueChange={(enabled) =>
-                          updateConfigField(
-                            app.id,
-                            'schedules',
-                            enabled
-                              ? [
-                                  {
-                                    days: [1, 2, 3, 4, 5],
-                                    startMinute: 9 * 60,
-                                    endMinute: 17 * 60,
-                                    mode: 'intervene',
-                                  },
-                                ]
-                              : []
-                          )
-                        }
-                      />
-                    </View>
+              return (
+                <ListRow
+                  key={id}
+                  showSeparator={true}
+                  onPress={() => editAppRule(id)}
+                >
+                  <AppBadge name={name} color={catalog?.accentColor} size={32} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.appNameText}>{name}</Text>
+                    <Text style={styles.appDetailText}>
+                      {hasPauseTimer(appRule.mode) ? `${effectiveSec} с · ` : ''}{ruleLabel.toLowerCase()}
+                      {!curiosity && appRule.mode === 'countdown' && appRule.escalating ? ' 📈' : ''} · {opensToday > 0 ? `${opensToday} відкр. сьогодні` : 'сьогодні не відкривався'}
+                    </Text>
                   </View>
-                )}
+                  <Text style={styles.chevron}>›</Text>
+                </ListRow>
+              );
+            })
+          ) : (
+            view.apps.map(id => <ListRow key={id} onPress={() => router.push({ pathname: '/selected-app', params: { appId: id } })}>
+              <View style={{ flex: 1, gap: 3 }}>
+                <FamilyAppLabel tokenId={id} />
+                <Text style={styles.appDetailText}>{hasPauseTimer(view.appRules?.[id]?.mode ?? view.mode) ? `${view.appRules?.[id]?.seconds ?? view.seconds} с · ` : ''}{appCuriosityEnabled(id, 'legacy') ? 'Curiosity Mode' : getModeLabel(view.appRules?.[id]?.mode ?? view.mode)}</Text>
               </View>
-            );
-          })}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+              <Text style={styles.chevron}>›</Text>
+            </ListRow>)
+          )}
+
+          {/* Plus Add Row as the last item inside the list */}
+          <ListRow
+            showSeparator={false}
+            onPress={addApps}
+          >
+            <View style={styles.addIconBadge}>
+              <EditorialIcon name="add" active size={19} />
+            </View>
+            <Text style={styles.addAppLabel}>Додати застосунки</Text>
+          </ListRow>
+        </ListSection>
+      )}
+      {groupError !== '' && <Text style={styles.errorText}>{groupError}</Text>}
+      <ListSection title="ГРУПИ ЗАСТОСУНКІВ" footer="Об’єднай застосунки в групу зі спільними налаштуваннями.">
+        {groups.map(group => <ListRow key={group.id} onPress={() => router.push({ pathname: '/group', params: { id: group.id } })}>
+          <AppBadge name={group.name} size={32} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.appNameText}>{group.name}</Text>
+            <Text style={styles.appDetailText}>{group.appIds.length} застосунків · {hasPauseTimer(group.previewRule?.mode ?? group.mode) ? `${group.seconds} с · ` : ''}{curiosityEnabled(group.id) ? 'Curiosity Mode' : getModeLabel(group.previewRule?.mode ?? group.mode)}</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </ListRow>)}
+        <ListRow showSeparator={false} onPress={() => router.push('/group')}>
+          <View style={styles.addIconBadge}><EditorialIcon name="add" active size={19} /></View>
+          <Text style={styles.addAppLabel}>Створити групу</Text>
+        </ListRow>
+      </ListSection>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100, gap: 14 },
-  headerRow: {
-    flexDirection: 'row',
+  headerContainer: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  snoozeBanner: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255, 159, 10, 0.15)',
+    borderRadius: 10,
+  },
+  snoozeBannerText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 14,
+    fontWeight: '600',
+    color: appleTheme.orange,
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    paddingVertical: 40,
     alignItems: 'center',
-    justifyContent: 'space-between',
+  },
+  mutedText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 15,
+    color: appleTheme.secondaryLabel,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 8,
+  },
+  emptyIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: appleTheme.secondaryBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+    color: appleTheme.label,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    lineHeight: 22,
+    color: appleTheme.secondaryLabel,
+    textAlign: 'center',
+    maxWidth: 380,
+  },
+  appNameText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    fontWeight: '500',
+    color: appleTheme.label,
+    letterSpacing: -0.3,
+  },
+  appDetailText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 13,
+    color: appleTheme.secondaryLabel,
+    marginTop: 1,
+  },
+  chevron: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 20,
+    fontWeight: '400',
+    color: appleTheme.secondaryLabel,
+  },
+  addIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(10, 132, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addAppLabel: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    fontWeight: '500',
+    color: appleTheme.tint,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(255, 69, 58, 0.15)',
+    borderRadius: 12,
+    padding: 16,
     gap: 12,
   },
-  header: { flex: 1, gap: 4 },
-  langPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  subtitle: { opacity: 0.7 },
-  summaryRow: { flexDirection: 'row', gap: 10 },
-  summaryCard: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(128,128,128,0.1)',
-    gap: 4,
-  },
-  sectionTitle: { marginTop: 6 },
-  appCard: {
-    borderRadius: 14,
-    padding: 14,
-    backgroundColor: 'rgba(128,128,128,0.08)',
-    gap: 12,
-  },
-  appHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  appTitleArea: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 12, height: 12, borderRadius: 6 },
-  appMeta: { flex: 1, gap: 2 },
-  previewButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(32, 138, 239, 0.14)',
-  },
-  previewText: { color: '#208AEF' },
-  expandedArea: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(128,128,128,0.2)',
-    paddingTop: 12,
-    gap: 8,
-  },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(128,128,128,0.35)',
-  },
-  chipActive: { backgroundColor: '#208AEF', borderColor: '#208AEF' },
-  chipTextActive: { color: '#FFFFFF' },
-  strictRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
+  errorText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 14,
+    color: appleTheme.red,
   },
 });

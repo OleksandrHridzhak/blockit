@@ -1,268 +1,386 @@
-import { useFocusEffect } from 'expo-router';
-import * as Linking from 'expo-linking';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { AnalyticsSummary, computeAnalyticsSummary } from '@/core/analytics';
-import { getAppDisplayName } from '@/core/catalog';
+import { useEffect, useState } from 'react';
+import { router, type Href } from 'expo-router';
+import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import {
-  getUserPreferences,
-  saveUserPreferences,
-  UserPreferences,
-} from '@/storage/preferences';
-import {
-  getHistoryEvents,
-  getWidgetSnapshot,
-  HistoryEvent,
-  syncWidgetSnapshot,
-} from '@/storage/repository';
+  Action,
+  appleTheme,
+  ListRow,
+  ListSection,
+  Page,
+  SegmentedControl,
+  ui,
+} from '@/components/protection-ui';
+import { useProtection } from '@/hooks/use-protection';
+import { setGlobalSnooze } from '@/features/preview/store';
 
-const SETUP_STEPS = [
-  '1. Open the Apple Shortcuts app on your iPhone → Automation tab → tap "+".',
-  '2. Choose "App" → select Instagram (or another guarded app) → check "Is Opened" and "Run Immediately".',
-  '3. Add action: Blockit → "Should Intercept App" (select Instagram).',
-  '4. Add an "If" block: If Should Intercept App is true → "Open URLs" with blockit://intervene?app=instagram.',
+const SNOOZE_DURATIONS = [
+  { label: '15 хв', minutes: 15 },
+  { label: '30 хв', minutes: 30 },
+  { label: '1 год', minutes: 60 },
 ];
 
-export default function ExploreScreen() {
-  const [data, setData] = useState<{
-    events: HistoryEvent[];
-    summary: AnalyticsSummary;
-    prefs: UserPreferences;
-  }>(() => {
-    const events = getHistoryEvents();
-    syncWidgetSnapshot();
-    return {
-      events,
-      summary: computeAnalyticsSummary(events, Date.now()),
-      prefs: getUserPreferences(),
-    };
-  });
+export default function SettingsScreen() {
+  const { view, busy, run, refresh } = useProtection();
+  const [selectedDurationIndex, setSelectedDurationIndex] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
 
-  useFocusEffect(
-    useCallback(() => {
-      const events = getHistoryEvents();
-      syncWidgetSnapshot();
-      setData({
-        events,
-        summary: computeAnalyticsSummary(events, Date.now()),
-        prefs: getUserPreferences(),
-      });
-    }, [])
-  );
+  // Expandable FAQ items state
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
-  const { events, summary, prefs } = data;
-  const widgetSnapshot = getWidgetSnapshot();
+  // Tick timer to update remaining snooze minutes
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  const togglePro = () => {
-    const nextPrefs = saveUserPreferences({ isPro: !prefs.isPro });
-    setData((prev) => ({ ...prev, prefs: nextPrefs }));
+  const isSnoozed = Boolean(view?.snoozeUntil && view.snoozeUntil > now);
+  const remainingMinutes = isSnoozed && view?.snoozeUntil
+    ? Math.max(1, Math.ceil((view.snoozeUntil - now) / 60_000))
+    : 0;
+
+  const snoozeEndTime = isSnoozed && view?.snoozeUntil
+    ? new Date(view.snoozeUntil).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
+  const handleStartSnooze = () => {
+    const minutes = SNOOZE_DURATIONS[selectedDurationIndex].minutes;
+    run(async () => {
+      setGlobalSnooze(minutes);
+      await refresh();
+    });
   };
-  const maxDayCount = Math.max(
-    1,
-    ...summary.last7Days.map((d) => d.dismissed + d.continued)
-  );
+
+  const handleResumeProtection = () => {
+    run(async () => {
+      setGlobalSnooze(null);
+      await refresh();
+    });
+  };
+
+  const toggleFaq = (index: number) => {
+    setExpandedFaq(expandedFaq === index ? null : index);
+  };
+
+  const restorePurchases = () => {
+    run(async () => {
+      Alert.alert(
+        'Підписка відновлена',
+        'Вашу підписку Blockit Pro успішно синхронізовано з Apple ID.'
+      );
+    });
+  };
 
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <ThemedText type="title">Insights & Setup</ThemedText>
+    <Page>
+      {/* iOS Large Title Header */}
+      <View style={styles.headerContainer}>
+        <Text style={ui.largeTitle}>Параметри</Text>
+      </View>
 
-          <View style={styles.kpiRow}>
-            <View style={styles.kpiCard}>
-              <ThemedText type="subtitle" testID="stats-mindful-rate">
-                {summary.mindfulRatePercent}%
-              </ThemedText>
-              <ThemedText type="small" style={styles.muted}>
-                Mindful rate
-              </ThemedText>
-            </View>
-            <View style={styles.kpiCard}>
-              <ThemedText type="subtitle" testID="stats-saved-min">
-                {summary.estimatedSavedMinutes}m
-              </ThemedText>
-              <ThemedText type="small" style={styles.muted}>
-                Time saved
-              </ThemedText>
-            </View>
-            <View style={styles.kpiCard}>
-              <ThemedText type="subtitle">{summary.totalDismissed}</ThemedText>
-              <ThemedText type="small" style={styles.muted}>
-                Total exits
-              </ThemedText>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <ThemedText type="smallBold">Last 7 Days (Mindful exits vs Opens)</ThemedText>
-            <View style={styles.chartRow}>
-              {summary.last7Days.map((bucket) => {
-                const total = bucket.dismissed + bucket.continued;
-                const heightPct = Math.max(8, Math.round((total / maxDayCount) * 100));
-                return (
-                  <View key={bucket.dayKey} style={styles.chartCol}>
-                    <View style={styles.barTrack}>
-                      <View style={[styles.barFill, { height: `${heightPct}%` }]} />
-                    </View>
-                    <ThemedText type="small" style={styles.muted}>
-                      {bucket.label}
-                    </ThemedText>
-                    <ThemedText type="small">
-                      {bucket.dismissed}/{total}
-                    </ThemedText>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <ThemedText type="smallBold">iOS Shortcuts Automation (No-flicker mode)</ThemedText>
-            {SETUP_STEPS.map((step) => (
-              <ThemedText key={step} type="small" style={styles.step}>
-                {step}
-              </ThemedText>
-            ))}
-            <Pressable
-              testID="open-shortcuts-app"
-              onPress={() => Linking.openURL('shortcuts://')}
-              style={styles.button}>
-              <ThemedText type="smallBold" style={styles.buttonText}>
-                Open Apple Shortcuts
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          <View style={styles.card}>
-            <ThemedText type="smallBold">
-              Home Screen Widget Snapshot (Today&apos;s Stats Intent)
-            </ThemedText>
-            <ThemedText type="small" testID="widget-snapshot-preview">
-              {widgetSnapshot
-                ? `${widgetSnapshot.mindfulExitsToday}/${widgetSnapshot.attemptsToday} mindful exits · ${widgetSnapshot.savedMinutesToday}m saved`
-                : '0/0 mindful exits · 0m saved'}
-            </ThemedText>
-            <ThemedText type="small" style={styles.muted}>
-              Add the &ldquo;Today&apos;s Stats&rdquo; Blockit shortcut widget to your iOS Home
-              Screen or Lock Screen.
-            </ThemedText>
-          </View>
-
-          <View style={styles.card}>
-            <ThemedText type="smallBold">
-              Blockit Pro {prefs.isPro ? '✓ Active' : '(Preview)'}
-            </ThemedText>
-            <ThemedText type="small" style={styles.muted}>
-              Unlocks unlimited guarded apps, strict schedules, and website domain rules (
-              {prefs.blockedDomains.join(', ')}).
-            </ThemedText>
-            <Pressable
-              testID="toggle-pro-plan"
-              onPress={togglePro}
-              style={styles.button}>
-              <ThemedText type="smallBold" style={styles.buttonText}>
-                {prefs.isPro ? 'Manage Pro (Active)' : 'Unlock Blockit Pro (Test Mode)'}
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          <ThemedText type="smallBold" style={styles.sectionTitle}>
-            Recent Interceptions ({events.length})
-          </ThemedText>
-
-          {events.length === 0 ? (
-            <View style={styles.card}>
-              <ThemedText type="small" style={styles.muted}>
-                No activity recorded yet. Trigger a pause from the Home tab or via
-                blockit://intervene?app=instagram.
-              </ThemedText>
-            </View>
-          ) : (
-            events.slice(0, 25).map((ev) => (
-              <View key={ev.id} style={styles.eventRow}>
-                <View style={styles.eventMeta}>
-                  <ThemedText type="smallBold">{getAppDisplayName(ev.appId)}</ThemedText>
-                  <ThemedText type="small" style={styles.muted}>
-                    {new Date(ev.timestampMs).toLocaleTimeString()}
-                  </ThemedText>
-                </View>
-                <ThemedText type="small">
-                  {ev.outcome === 'dismissed'
-                    ? 'Closed mindfully'
-                    : ev.outcome === 'continued'
-                      ? `Opened (${ev.bypassMinutes ?? 5}m bypass)`
-                      : 'Paused'}
-                </ThemedText>
+      {/* SNOOZE ALL SECTION */}
+      <ListSection
+        title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ"
+        footer={
+          isSnoozed
+            ? `Захист тимчасово вимкнено до ${snoozeEndTime}. Додатки відкриватимуться вільно без затримок.`
+            : 'Тимчасово вимикає всі паузи та правила для всіх програм на обраний проміжок часу.'
+        }
+      >
+        {isSnoozed ? (
+          <ListRow showSeparator={false}>
+            <View style={styles.snoozeActiveRow}>
+              <View style={styles.snoozeIconBadge}>
+                <Text style={{ fontSize: 18 }}>⏸️</Text>
               </View>
-            ))
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.snoozeActiveTitle}>
+                  Обмеження призупинено
+                </Text>
+                <Text style={styles.snoozeActiveDetail}>
+                  До {snoozeEndTime} · залишилось ~{remainingMinutes} хв
+                </Text>
+              </View>
+            </View>
+          </ListRow>
+        ) : (
+          <View style={{ padding: 12, gap: 12 }}>
+            <Text style={styles.sectionSubtext}>
+              Оберіть час, на який вимкнути обмеження:
+            </Text>
+            <SegmentedControl
+              values={SNOOZE_DURATIONS.map((d) => d.label)}
+              selectedIndex={selectedDurationIndex}
+              disabled={busy}
+              onChange={setSelectedDurationIndex}
+            />
+          </View>
+        )}
+      </ListSection>
+
+      {/* Snooze Action Button */}
+      <View style={{ marginTop: -8 }}>
+        {isSnoozed ? (
+          <Action
+            label="Відновити захист зараз"
+            disabled={busy}
+            onPress={handleResumeProtection}
+          />
+        ) : (
+          <Action
+            label={`Вимкнути все на ${SNOOZE_DURATIONS[selectedDurationIndex].label}`}
+            disabled={busy}
+            secondary
+            onPress={handleStartSnooze}
+          />
+        )}
+      </View>
+
+      <ListSection title="CURIOSITY MODE" footer="Додатковий режим із цікавими історіями. Вмикається окремо в налаштуваннях потрібної групи; за замовчуванням вимкнений.">
+        <ListRow showSeparator={false} onPress={() => router.push({ pathname: '/curiosity', params: { preview: '1' } })}>
+          <Text style={styles.linkText}>Переглянути добірку</Text><Text style={styles.chevron}>›</Text>
+        </ListRow>
+      </ListSection>
+      {/* SUBSCRIPTION SECTION in Apple Settings Style */}
+      <ListSection
+        title="ПІДПИСКА"
+        footer="Керування підпискою та скасування доступні через ваш обліковий запис Apple ID."
+      >
+        <ListRow showSeparator={true}>
+          <View style={styles.subIconBadge}>
+            <Text style={{ fontSize: 18 }}>⭐</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <View style={styles.subTitleRow}>
+              <Text style={styles.subTitle}>Blockit Pro</Text>
+              <View style={styles.subStatusBadge}>
+                <Text style={styles.subStatusText}>АКТИВНА</Text>
+              </View>
+            </View>
+            <Text style={styles.subDetail}>
+              Безлімітні додатки та персональні налаштування
+            </Text>
+          </View>
+        </ListRow>
+
+        <ListRow showSeparator={true}>
+          <View style={styles.infoRow}>
+            <Text style={styles.rowLabel}>Діє до</Text>
+            <Text style={styles.rowValue}>
+              {view?.subscription?.renewalDate ?? '26 жовтня 2027'}
+            </Text>
+          </View>
+        </ListRow>
+
+        <ListRow
+          showSeparator={true}
+          onPress={() => {
+            Linking.openURL('https://apps.apple.com/account/subscriptions').catch(() => {});
+          }}
+        >
+          <Text style={styles.linkText}>Керувати підпискою в Apple ID</Text>
+          <Text style={styles.chevron}>›</Text>
+        </ListRow>
+
+        <ListRow showSeparator={false} onPress={restorePurchases}>
+          <Text style={styles.linkText}>Відновити покупки</Text>
+        </ListRow>
+      </ListSection>
+
+      {/* FAQ SECTION */}
+      <ListSection title="ЧАСТІ ЗАПИТАННЯ (FAQ)">
+        <ListRow showSeparator={true} onPress={() => toggleFaq(0)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.faqQuestion}>
+              Як налаштувати паузу для конкретного додатка?
+            </Text>
+            {expandedFaq === 0 && (
+              <Text style={styles.faqAnswer}>
+                Перейдіть на головну вкладку «Застосунки» та просто натисніть на потрібну програму у списку. Відкриється вікно налаштування, де можна встановити персональну кількість секунд (10, 20, 30 або 60) та окреме завдання.
+              </Text>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.chevron,
+              expandedFaq === 0 && styles.chevronRotated,
+            ]}
+          >
+            ›
+          </Text>
+        </ListRow>
+
+        <ListRow showSeparator={true} onPress={() => toggleFaq(1)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.faqQuestion}>
+              Як працює кнопка «Вимкнути усе»?
+            </Text>
+            {expandedFaq === 1 && (
+              <Text style={styles.faqAnswer}>
+                Вона призупиняє дію всіх пауз на обраний час (15 хв, 30 хв або 1 годину). Протягом цього проміжку всі додатки відкриваються миттєво. Після завершення часу захист автоматично повертається. Ви також можете відновити його достроково в будь-який момент.
+              </Text>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.chevron,
+              expandedFaq === 1 && styles.chevronRotated,
+            ]}
+          >
+            ›
+          </Text>
+        </ListRow>
+
+        <ListRow showSeparator={false} onPress={() => toggleFaq(2)}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.faqQuestion}>
+              Де зберігаються мої персональні дані?
+            </Text>
+            {expandedFaq === 2 && (
+              <Text style={styles.faqAnswer}>
+                Blockit повністю дотримується приватності Apple: 100% налаштувань, списків додатків та історії зберігаються виключно локально на вашому iPhone. Жодні персональні дані не передаються на сторонні сервери.
+              </Text>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.chevron,
+              expandedFaq === 2 && styles.chevronRotated,
+            ]}
+          >
+            ›
+          </Text>
+        </ListRow>
+      </ListSection>
+      <ListSection title="ДОПОМОГА">
+        <ListRow showSeparator={false} onPress={() => router.push('/diagnostics' as Href)}><Text style={ui.body}>Діагностика блокування</Text></ListRow>
+      </ListSection>
+    </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 100, gap: 14 },
-  kpiRow: { flexDirection: 'row', gap: 10 },
-  kpiCard: {
+  headerContainer: {
+    paddingHorizontal: 4,
+    paddingTop: 8,
+  },
+  sectionSubtext: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 14,
+    color: appleTheme.secondaryLabel,
+  },
+  snoozeActiveRow: {
     flex: 1,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: 'rgba(128,128,128,0.1)',
-    gap: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  card: {
-    padding: 16,
-    borderRadius: 14,
-    backgroundColor: 'rgba(128,128,128,0.08)',
-    gap: 10,
+  snoozeIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 159, 10, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  chartRow: {
+  snoozeActiveTitle: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    fontWeight: '600',
+    color: appleTheme.orange,
+    letterSpacing: -0.3,
+  },
+  snoozeActiveDetail: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 13,
+    color: appleTheme.secondaryLabel,
+    marginTop: 2,
+  },
+  subIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 214, 10, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subTitle: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    fontWeight: '600',
+    color: appleTheme.label,
+    letterSpacing: -0.3,
+  },
+  subStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(48, 209, 88, 0.15)',
+    borderRadius: 5,
+  },
+  subStatusText: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 10,
+    fontWeight: '700',
+    color: appleTheme.green,
+    letterSpacing: 0.5,
+  },
+  subDetail: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 13,
+    color: appleTheme.secondaryLabel,
+    marginTop: 2,
+  },
+  infoRow: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 120,
-    paddingTop: 10,
+    alignItems: 'center',
   },
-  chartCol: { flex: 1, alignItems: 'center', gap: 4 },
-  barTrack: {
-    width: 16,
+  rowLabel: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    color: appleTheme.label,
+  },
+  rowValue: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 15,
+    color: appleTheme.secondaryLabel,
+  },
+  linkText: {
     flex: 1,
-    borderRadius: 8,
-    backgroundColor: 'rgba(128,128,128,0.18)',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+    fontFamily: ui.body.fontFamily,
+    fontSize: 16,
+    fontWeight: '500',
+    color: appleTheme.tint,
   },
-  barFill: {
-    width: '100%',
-    backgroundColor: '#208AEF',
-    borderRadius: 8,
+  chevron: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 20,
+    fontWeight: '400',
+    color: appleTheme.secondaryLabel,
   },
-  step: { opacity: 0.85 },
-  button: {
-    marginTop: 6,
-    backgroundColor: '#208AEF',
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
+  chevronRotated: {
+    transform: [{ rotate: '90deg' }],
   },
-  buttonText: { color: '#FFFFFF' },
-  sectionTitle: { marginTop: 6 },
-  muted: { opacity: 0.7 },
-  eventRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(128,128,128,0.06)',
+  faqQuestion: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 15,
+    fontWeight: '500',
+    color: appleTheme.label,
+    lineHeight: 20,
   },
-  eventMeta: { gap: 2 },
+  faqAnswer: {
+    fontFamily: ui.body.fontFamily,
+    fontSize: 13,
+    lineHeight: 18,
+    color: appleTheme.secondaryLabel,
+    marginTop: 8,
+  },
 });

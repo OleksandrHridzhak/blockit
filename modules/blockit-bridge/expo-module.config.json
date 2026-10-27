@@ -1,6 +1,11 @@
 {
-  "platforms": ["ios"],
+  "platforms": [
+    "ios"
+  ],
   "ios": {
-    "modules": ["BlockitBridgeModule"]
+    "modules": [
+      "BlockitBridgeModule",
+      "ScreenTimeModule"
+    ]
   }
 }

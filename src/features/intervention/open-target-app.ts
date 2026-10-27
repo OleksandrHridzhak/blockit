@@ -17,14 +17,6 @@ export async function openGuardedTargetApp(appId: string): Promise<boolean> {
       await Linking.openURL(entry.iosScheme);
       return true;
     }
-  } catch {
-    // Fallback below
-  }
-
-  try {
-    await Linking.openURL(`https://apps.apple.com/app/id${entry.appStoreId}`);
-    return true;
-  } catch {
-    return false;
-  }
+  } catch { /* Keep the granted access and offer a manual return. */ }
+  return false;
 }

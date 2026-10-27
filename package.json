@@ -1,6 +1,6 @@
 {
   "name": "blockit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/ui": "~58.0.22",
@@ -39,6 +39,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "eas-build-post-install": "node scripts/test-native-window.cjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -46,7 +47,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "check": "tsc --noEmit && expo lint && jest"
+    "check": "tsc --noEmit && expo lint && jest",
+    "check:screen-time": "node scripts/check-screen-time.cjs"
   },
   "private": true
 }

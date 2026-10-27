@@ -2,14 +2,14 @@
   "expo": {
     "name": "Blockit",
     "slug": "blockit",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "blockit",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.hridzhak.blockit",
+      "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795",
       "supportsTablet": false,
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
@@ -25,10 +25,12 @@
           "snapchat",
           "pinterest",
           "linkedin",
-          "threads"
+          "threads",
+          "barcelona"
         ],
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "appleTeamId": "2WT689Y795"
     },
     "android": {
       "package": "com.hridzhak.blockit",
@@ -41,25 +43,72 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
       "expo-dev-client",
-      "./plugins/withAppIntent",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "backgroundColor": "#121212"
         }
-      ]
+      ],
+      "./plugins/withScreenTime"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "BlockitShield",
+                  "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795.BlockitShield",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.hridzhak.blockit.2WT689Y795"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "BlockitAction",
+                  "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795.BlockitAction",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.hridzhak.blockit.2WT689Y795"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "BlockitMonitor",
+                  "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795.BlockitMonitor",
+                  "entitlements": {
+                    "com.apple.developer.family-controls": true,
+                    "com.apple.security.application-groups": [
+                      "group.com.hridzhak.blockit.2WT689Y795"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "16649efa-f52d-4039-a184-d32a4c6f8004"
+      }
+    },
+    "owner": "sasha72"
   }
 }

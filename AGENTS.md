@@ -29,6 +29,12 @@ Run lint and typecheck before declaring any task done.
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
+## Icons
+
+- Use Apple's SF Symbols for interface icons on iOS through the existing `expo-symbols` package. Use matching Material Symbols for Android and web via platform-specific names, and verify that icons remain visible on each supported platform.
+- Prefer a consistent symbol style and appropriate filled or outline states. Avoid introducing emoji, text glyphs, or separate icon libraries for interface icons unless the user explicitly requests them or no suitable symbol exists.
+- Choose SF Symbols supported by the app's minimum iOS version and keep accessibility labels on interactive controls.
+
 ## Building with EAS
 
 Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.

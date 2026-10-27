@@ -19,6 +19,7 @@ export interface HistoryEvent {
   outcome: 'intervened' | 'dismissed' | 'continued' | 'blocked';
   durationSec?: number;
   bypassMinutes?: number;
+  groupName?: string;
 }
 
 const CONFIGS_KEY = 'configs';

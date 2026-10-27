@@ -1,0 +1,419 @@
+import Foundation
+import FamilyControls
+import ManagedSettings
+import DeviceActivity
+import UserNotifications
+import CryptoKit
+import Darwin
+
+// Compiled into the host module and all three extensions. Only opaque tokens
+// cross processes; no bundle identifiers or installed-app scraping.
+enum ScreenTimeStore {
+  static let group = "group.com.hridzhak.blockit.2WT689Y795"
+  static var defaults: UserDefaults { UserDefaults(suiteName: group)! }
+  static let settings = ManagedSettingsStore(named: .init("blockit"))
+  static let center = DeviceActivityCenter()
+  static let sessionSeconds = AccessWindow.duration
+  static let phrase = "Я обираю відкрити свідомо"
+  // Separate atomic files intentionally avoid the state lock: they show whether
+  // an extension callback arrived even if another process holds that lock.
+  struct MonitorTrace: Codable {
+    let timestamp: Double
+    let event: String
+    let request: String
+    let detail: String
+  }
+  static func trace(_ event: String, id: String = "", detail: String = "") {
+    guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
+    let folder = root.appendingPathComponent("monitor-trace", isDirectory: true)
+    do {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event, request: String(id.prefix(8)), detail: detail)
+      let name = String(format: "%.3f", value.timestamp) + "-" + UUID().uuidString + ".json"
+      try JSONEncoder().encode(value).write(to: folder.appendingPathComponent(name), options: .atomic)
+      let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).sorted { $0.lastPathComponent < $1.lastPathComponent }
+      for file in files.prefix(max(0, files.count - 100)) { try? FileManager.default.removeItem(at: file) }
+    } catch { /* Diagnostics must never interfere with protection. */ }
+  }
+  static func monitorTrace() -> [MonitorTrace] {
+    guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),
+          let files = try? FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("monitor-trace"), includingPropertiesForKeys: nil) else { return [] }
+    return files.compactMap { file in
+      guard let data = try? Data(contentsOf: file) else { return nil }
+      return try? JSONDecoder().decode(MonitorTrace.self, from: data)
+    }.sorted { $0.timestamp > $1.timestamp }.prefix(60).map { $0 }
+  }
+  // Host and extensions are separate processes. Serialize read-modify-write
+  // transactions with an App Group file lock rather than a process-local queue.
+  static func transaction<T>(_ body: () throws -> T) throws -> T {
+    guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
+      throw Failure.sharedStore
+    }
+    let descriptor = open(container.appendingPathComponent("state.lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+    guard descriptor >= 0 else { throw Failure.sharedStore }
+    defer { close(descriptor) }
+    guard flock(descriptor, LOCK_EX) == 0 else { throw Failure.sharedStore }
+    defer { flock(descriptor, LOCK_UN) }
+    // Flush/refresh CFPreferences at the process boundary while holding the lock.
+    defaults.synchronize()
+    defer { defaults.synchronize() }
+    return try body()
+  }
+  struct Policy: Codable {
+    var enabled = true
+    var seconds = 20
+    var mode = "countdown"
+  }
+  struct AppRule: Codable {
+    var seconds: Int
+    var mode: String
+    var sessionMinutes: Int? = nil
+  }
+  struct AppGroup: Codable {
+    var id: String
+    var name: String
+    var seconds: Int
+    var mode: String
+    var tokens: Set<ApplicationToken>
+    var sessionMinutes: Int? = nil
+  }
+  struct Request: Codable {
+    let id: String
+    let token: ApplicationToken
+    let createdAt: Double
+    var readyAt: Double
+    let mode: String
+    var groupID: String? = nil
+    var groupName: String? = nil
+    var sessionMinutes: Int? = nil
+    var learningSeconds: Int? = nil
+  }
+  struct Grant: Codable {
+    let id: String
+    let token: ApplicationToken
+    let until: Double
+  }
+  struct ScheduledGrant: Codable {
+    let token: ApplicationToken
+    let window: AccessWindow
+  }
+  struct LastFailure: Codable {
+    let message: String
+    let detail: String
+  }
+  static func recordFailure(_ error: Error) {
+    try? transaction {
+      let nativeError = error as NSError
+      write("lastFailure", LastFailure(
+        message: "Не вдалося надати доступ. Відкрий Blockit і спробуй ще раз.",
+        detail: "\(nativeError.domain):\(nativeError.code) \(nativeError.localizedDescription)"))
+    }
+  }
+  static func read<T: Decodable>(_ key: String, _ type: T.Type) -> T? {
+    guard let data = defaults.data(forKey: key) else { return nil }
+    return try? JSONDecoder().decode(type, from: data)
+  }
+  static func write<T: Encodable>(_ key: String, _ value: T) {
+    guard let data = try? JSONEncoder().encode(value) else { return }
+    defaults.set(data, forKey: key)
+  }
+  static var policy: Policy { read("policy", Policy.self) ?? Policy() }
+  static var selection: FamilyActivitySelection {
+    read("selection", FamilyActivitySelection.self) ?? FamilyActivitySelection()
+  }
+  static var appRules: [String: AppRule] { read("appRules", [String: AppRule].self) ?? [:] }
+  // Preserve selections from earlier releases without guessing application names.
+  static var groups: [AppGroup] {
+    if let saved = read("groups", [AppGroup].self) { return saved }
+    guard !selection.applicationTokens.isEmpty else { return [] }
+    return [AppGroup(id: "legacy", name: "Мої застосунки", seconds: policy.seconds,
+                     mode: policy.mode, tokens: selection.applicationTokens)]
+  }
+  static func group(for token: ApplicationToken) -> AppGroup? {
+    groups.first { $0.tokens.contains(token) }
+  }
+  // All callers hold the cross-process lock. One application belongs to one group.
+  static func saveGroup(_ group: AppGroup) {
+    var saved = groups
+    saved.removeAll { $0.id == group.id }
+    for index in saved.indices { saved[index].tokens.subtract(group.tokens) }
+    if group.id != "legacy" {
+      let ids = Set(group.tokens.map(applicationID))
+      write("appRules", appRules.filter { !ids.contains($0.key) })
+    }
+    saved.append(group)
+    saveGroups(saved)
+  }
+  static func saveGroups(_ saved: [AppGroup]) {
+    resetAccess()
+    write("groups", saved)
+    var selected = FamilyActivitySelection()
+    selected.applicationTokens = saved.reduce(into: Set<ApplicationToken>()) { $0.formUnion($1.tokens) }
+    write("selection", selected)
+    pruneAppRules()
+    apply()
+  }
+  static var history: [PauseHistory.Event] { read("screenTimeHistory", [PauseHistory.Event].self) ?? [] }
+  static func record(_ request: Request, outcome: String) {
+    write("screenTimeHistory", PauseHistory.recording(outcome, requestID: request.id,
+      groupID: request.groupID ?? "legacy", groupName: request.groupName ?? "Мої застосунки",
+      timestampMs: Date().timeIntervalSince1970 * 1000, in: history))
+  }
+  static func applicationID(_ token: ApplicationToken) -> String {
+    guard let encoded = try? JSONEncoder().encode(token) else { return "" }
+    return SHA256.hash(data: encoded).map { String(format: "%02x", $0) }.joined()
+  }
+  static func selectedToken(id: String) -> ApplicationToken? {
+    selection.applicationTokens.first { applicationID($0) == id }
+  }
+  static func rule(for token: ApplicationToken) -> AppRule {
+    if let group = group(for: token), group.id != "legacy" { return AppRule(seconds: group.seconds, mode: group.mode, sessionMinutes: group.sessionMinutes) }
+    if let rule = appRules[applicationID(token)] { return rule }
+    if let group = group(for: token) { return AppRule(seconds: group.seconds, mode: group.mode, sessionMinutes: group.sessionMinutes) }
+    return AppRule(seconds: policy.seconds, mode: policy.mode)
+  }
+  static func pruneAppRules() {
+    let selectedIDs = Set(selection.applicationTokens.map(applicationID))
+    write("appRules", appRules.filter { selectedIDs.contains($0.key) })
+  }
+  static var pending: Request? {
+    guard let request = read("request", Request.self),
+          Date().timeIntervalSince1970 >= request.createdAt,
+          Date().timeIntervalSince1970 < max(request.createdAt, request.readyAt) + 600,
+          selection.applicationTokens.contains(request.token), policy.enabled else { return nil }
+    return request
+  }
+  static func clearRequest() {
+    defaults.removeObject(forKey: "request")
+    defaults.removeObject(forKey: "scheduledGrant")
+    UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["blockit.request"])
+    UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["blockit.request"])
+  }
+  static func resetAccess() {
+    // Re-shield before cancelling the expiry callback.
+    defaults.removeObject(forKey: "grant")
+    defaults.removeObject(forKey: "lastFailure")
+    apply()
+    clearRequest()
+  }
+  // Never call DeviceActivity IPC with the cross-process file lock held:
+  // starting/stopping a monitor can synchronously launch an extension callback.
+  static func stopUnusedMonitoring() {
+    let activities = center.activities
+    guard let keep = try? transaction({ () -> Set<String> in
+      var ids = Set<String>()
+      if let request = pending { ids.insert(request.id) }
+      if let grant = read("grant", Grant.self) { ids.insert(grant.id) }
+      if let scheduled = read("scheduledGrant", ScheduledGrant.self) { ids.insert(scheduled.window.requestID) }
+      let requestIDs = ids
+      ids.formUnion(requestIDs.map { $0 + ".expiry" })
+      return ids
+    }) else { return }
+    let unused = activities.filter { !keep.contains($0.rawValue) }
+    if !unused.isEmpty { center.stopMonitoring(unused) }
+  }
+  static func apply() {
+    guard policy.enabled else { settings.clearAllSettings(); return }
+    var tokens = selection.applicationTokens
+    if let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
+      tokens.remove(grant.token)
+    } else { defaults.removeObject(forKey: "grant") }
+    settings.shield.applications = tokens.isEmpty ? nil : tokens
+    // Categories and websites are deliberately not supported in this release.
+    settings.shield.applicationCategories = nil
+    settings.shield.webDomains = nil
+  }
+  static func request(for token: ApplicationToken) throws -> Request {
+    guard policy.enabled, selection.applicationTokens.contains(token) else { throw Failure.invalidRequest }
+    if let existing = pending, existing.token == token { return existing }
+    clearRequest()
+    defaults.removeObject(forKey: "lastFailure")
+    let now = Date().timeIntervalSince1970
+    let appRule = rule(for: token)
+    let source = group(for: token)
+    let request = Request(id: UUID().uuidString, token: token, createdAt: now,
+                          readyAt: AccessWindow.isMicrolearning(appRule.mode) ? 0 : AccessWindow.pauseDeadline(mode: appRule.mode, seconds: appRule.seconds, now: now), mode: appRule.mode,
+                          groupID: source?.id, groupName: source?.name, sessionMinutes: appRule.sessionMinutes,
+                          learningSeconds: AccessWindow.isMicrolearning(appRule.mode) ? appRule.seconds : nil)
+    write("request", request)
+    record(request, outcome: "intervened")
+    return request
+  }
+  static func startMicrolearning(id: String) throws -> Request {
+    try transaction {
+      guard var request = pending, request.id == id, AccessWindow.isMicrolearning(request.mode),
+            let seconds = request.learningSeconds, (1...86400).contains(seconds) else { throw Failure.invalidRequest }
+      if request.readyAt == 0 {
+        request.readyAt = AccessWindow.microlearningDeadline(existing: request.readyAt, seconds: seconds, now: Date().timeIntervalSince1970)
+        write("request", request)
+      }
+      return request
+    }
+  }
+  static func schedule(_ window: AccessWindow, token: ApplicationToken) throws {
+    var calendar = Calendar.current
+    calendar.timeZone = TimeZone.current
+    let components: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+    func dateComponents(_ timestamp: TimeInterval) -> DateComponents {
+      var value = calendar.dateComponents(components, from: Date(timeIntervalSince1970: timestamp))
+      value.calendar = calendar
+      value.timeZone = calendar.timeZone
+      return value
+    }
+    trace("schedule", id: window.requestID, detail: "start=\(window.startsAt) expiry=\(window.endsAt)")
+    // Calendar expiry remains a wall-clock fallback when the user leaves the app.
+    let expiry = DeviceActivityName(window.expiryMonitorID)
+    try center.startMonitoring(expiry, during: DeviceActivitySchedule(
+      intervalStart: dateComponents(window.endsAt), intervalEnd: dateComponents(window.expiryMonitorEndsAt), repeats: false))
+    let threshold = DateComponents(minute: window.usageSeconds / 60, second: window.usageSeconds % 60)
+    let event: DeviceActivityEvent
+    if #available(iOS 17.4, *) {
+      event = DeviceActivityEvent(applications: [token], threshold: threshold, includesPastActivity: false)
+    } else {
+      event = DeviceActivityEvent(applications: [token], threshold: threshold)
+    }
+    do {
+      try center.startMonitoring(.init(window.requestID), during: DeviceActivitySchedule(
+        intervalStart: dateComponents(window.startsAt), intervalEnd: dateComponents(window.monitorEndsAt), repeats: false),
+        events: [.init("access-used"): event])
+      trace("scheduled", id: window.requestID, detail: "usageSeconds=\(window.usageSeconds)")
+    } catch {
+      trace("schedule-failed", id: window.requestID, detail: error.localizedDescription)
+      center.stopMonitoring([expiry])
+      throw error
+    }
+  }
+  // Returns true only for a newly scheduled pause, to avoid duplicate notifications.
+  static func scheduleCountdown(_ request: Request) throws -> Bool {
+    defer { stopUnusedMonitoring() }
+    let existing = try transaction { read("scheduledGrant", ScheduledGrant.self) }
+    if existing?.window.requestID == request.id,
+       center.activities.contains(.init(request.id)),
+       center.activities.contains(.init(existing!.window.expiryMonitorID)) { return false }
+    let scheduled = try transaction { () throws -> ScheduledGrant in
+      guard pending?.id == request.id, request.mode == "countdown" else { throw Failure.invalidRequest }
+      let value = ScheduledGrant(token: request.token, window: AccessWindow(
+        requestID: request.id, readyAt: request.readyAt, now: Date().timeIntervalSince1970, sessionMinutes: request.sessionMinutes ?? 15))
+      write("scheduledGrant", value)
+      return value
+    }
+    do { try schedule(scheduled.window, token: scheduled.token) }
+    catch {
+      try? transaction {
+        if read("scheduledGrant", ScheduledGrant.self)?.window.requestID == request.id {
+          defaults.removeObject(forKey: "scheduledGrant")
+        }
+      }
+      throw error
+    }
+    let current = try transaction {
+      let current = pending?.id == request.id || read("grant", Grant.self)?.id == request.id
+      if current { defaults.removeObject(forKey: "lastFailure") }
+      return current
+    }
+    guard current else { throw Failure.invalidRequest }
+    return true
+  }
+  // Called by DeviceActivity at the START of the access interval (after the pause).
+  @discardableResult
+  static func activateCountdown(id: String) throws -> Bool {
+    try transaction {
+      guard let scheduled = read("scheduledGrant", ScheduledGrant.self),
+            scheduled.window.requestID == id,
+            let request = pending, request.mode == "countdown",
+            scheduled.window.canActivate(requestID: request.id, now: Date().timeIntervalSince1970),
+            scheduled.token == request.token else { return false }
+      write("grant", Grant(id: id, token: scheduled.token, until: scheduled.window.endsAt))
+      trace("grant-opened", id: id, detail: "expiry=\(scheduled.window.endsAt)")
+      record(request, outcome: "continued")
+      clearRequest()
+      defaults.removeObject(forKey: "lastFailure")
+      apply()
+      return true
+    }
+  }
+  static func notify(_ request: Request, completion: @escaping (Error?) -> Void) {
+    let content = UNMutableNotificationContent()
+    let seconds = max(0, Int(ceil(request.readyAt - Date().timeIntervalSince1970)))
+    content.title = AccessWindow.isMicrolearning(request.mode) ? "Коротка пауза з Microlearning" : request.mode == "countdown" ? "Пауза почалася" : "Завдання перед відкриттям"
+    content.body = request.mode == "countdown"
+      ? "Доступ має відкритися приблизно через \(seconds) с. Торкнися, щоб відкрити Blockit."
+      : AccessWindow.isMicrolearning(request.mode) ? "Торкнися сповіщення, щоб почати паузу в Blockit." : "Торкнися цього сповіщення, щоб перейти до завдання в Blockit. Якщо потрібно — відкрий Blockit вручну."
+    content.threadIdentifier = "blockit.pause"
+    content.userInfo = ["blockitRequest": request.id]
+    // Stable identifier replaces duplicates; notification delivery is never the timer.
+    UNUserNotificationCenter.current().add(
+      UNNotificationRequest(identifier: "blockit.request", content: content, trigger: nil),
+      withCompletionHandler: completion)
+  }
+  static func notifyFailure(completion: @escaping (Error?) -> Void) {
+    let content = UNMutableNotificationContent()
+    content.title = "Доступ поки закритий"
+    content.body = "Не вдалося запланувати доступ. Відкрий Blockit і спробуй ще раз."
+    UNUserNotificationCenter.current().add(
+      UNNotificationRequest(identifier: "blockit.request", content: content, trigger: nil),
+      withCompletionHandler: completion)
+  }
+  static func finish(id: String, answer: String) throws {
+    defer { stopUnusedMonitoring() }
+    // A countdown may have completed automatically while Blockit was open.
+    if try transaction({
+      guard let grant = read("grant", Grant.self) else { return false }
+      return grant.id == id && grant.until > Date().timeIntervalSince1970
+    }) { return }
+    let scheduledCountdown = try transaction { () throws -> Bool in
+      if let grant = read("grant", Grant.self), grant.id == id, grant.until > Date().timeIntervalSince1970 { return true }
+      let request = try validateFinish(id: id, answer: answer)
+      return request.mode == "countdown" && read("scheduledGrant", ScheduledGrant.self)?.window.requestID == id
+    }
+    if scheduledCountdown {
+      if try activateCountdown(id: id) { return }
+      guard try transaction({
+        guard let grant = read("grant", Grant.self) else { return false }
+        return grant.id == id && grant.until > Date().timeIntervalSince1970
+      }) else { throw Failure.invalidRequest }
+      return
+    }
+    let request = try transaction { () throws -> Request in
+      let request = try validateFinish(id: id, answer: answer)
+      defaults.removeObject(forKey: "grant")
+      apply()
+      return request
+    }
+    let window = AccessWindow(requestID: id, readyAt: Date().timeIntervalSince1970, now: Date().timeIntervalSince1970, sessionMinutes: request.sessionMinutes ?? 15)
+    // Registration is outside the shared lock, and must succeed before unshielding.
+    try schedule(window, token: request.token)
+    try transaction {
+      _ = try validateFinish(id: id, answer: answer)
+      write("grant", Grant(id: id, token: request.token, until: window.endsAt))
+      trace("grant-opened", id: id, detail: "expiry=\(window.endsAt)")
+      record(request, outcome: "continued")
+      clearRequest()
+      defaults.removeObject(forKey: "lastFailure")
+      apply()
+    }
+  }
+  private static func validateFinish(id: String, answer: String) throws -> Request {
+    guard AuthorizationCenter.shared.authorizationStatus == .approved,
+          let request = pending, request.id == id,
+          (!(request.mode == "countdown" || AccessWindow.isMicrolearning(request.mode)) || (request.readyAt > 0 && Date().timeIntervalSince1970 >= request.readyAt)) else { throw Failure.invalidRequest }
+    switch request.mode {
+    case "typing": guard answer.trimmingCharacters(in: .whitespacesAndNewlines) == phrase else { throw Failure.answer }
+    case "reflection": guard ["reply", "task", "rest"].contains(answer) else { throw Failure.answer }
+    case "countdown", "microlearning", "microlearning-v2": break
+    default: throw Failure.answer
+    }
+    return request
+  }
+  enum Failure: LocalizedError {
+    case invalidRequest, answer, sharedStore
+    var errorDescription: String? {
+      switch self {
+      case .invalidRequest: return "Пауза ще триває або запит застарів. Повернися до заблокованого застосунку й спробуй знову."
+      case .answer: return "Заверши завдання, щоб отримати доступ."
+      case .sharedStore: return "Немає доступу до спільних налаштувань. Потрібна збірка з дозволами Family Controls та App Group."
+      }
+    }
+  }
+}
+
