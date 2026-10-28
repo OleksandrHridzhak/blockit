@@ -30,7 +30,8 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "appleTeamId": "2WT689Y795"
+      "appleTeamId": "2WT689Y795",
+      "buildNumber": "26"
     },
     "android": {
       "package": "com.hridzhak.blockit",
