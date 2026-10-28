@@ -28,13 +28,22 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     guard !activity.rawValue.hasSuffix(".expiry") else { return }
     // Ignore delayed callbacks from a replaced session.
     try? ScreenTimeStore.transaction {
+      var changed = false
       if let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self),
          (grant.monitorID ?? grant.id) == activity.rawValue, grant.until <= Date().timeIntervalSince1970 {
         ScreenTimeStore.defaults.removeObject(forKey: "grant")
         ScreenTimeStore.trace("shield-restored", id: grant.id, detail: "access-interval-ended")
+        changed = true
       }
       if ScreenTimeStore.read("scheduledGrant", ScreenTimeStore.ScheduledGrant.self)?.window.requestID == activity.rawValue {
         ScreenTimeStore.clearRequest()
+        changed = true
+      }
+      // An old monitor ending while a new shield action runs owns no current
+      // state. Do not touch ManagedSettings or redraw the new session's shield.
+      guard changed else {
+        ScreenTimeStore.trace("interval-end-stale", id: activity.rawValue)
+        return
       }
       ScreenTimeStore.apply()
     }

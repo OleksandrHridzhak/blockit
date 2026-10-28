@@ -332,7 +332,7 @@ enum ScreenTimeStore {
       return request
     }
   }
-  static func schedule(_ window: AccessWindow, token: ApplicationToken) throws {
+  static func schedule(_ window: AccessWindow, token: ApplicationToken, trackUsage: Bool) throws {
     let calendar = Calendar.current
     func schedule(for interval: MonitoringInterval) -> DeviceActivitySchedule {
       DeviceActivitySchedule(intervalStart: interval.components(at: interval.startsAt, calendar: calendar),
@@ -348,19 +348,29 @@ enum ScreenTimeStore {
     // Calendar expiry remains a wall-clock fallback when the user leaves the app.
     let expiry = DeviceActivityName(window.expiryMonitorID)
     let access = DeviceActivityName(window.requestID)
-    let threshold = DateComponents(minute: window.usageSeconds / 60, second: window.usageSeconds % 60)
-    let event: DeviceActivityEvent
-    if #available(iOS 17.4, *) {
-      event = DeviceActivityEvent(applications: [token], threshold: threshold, includesPastActivity: false)
-    } else {
-      event = DeviceActivityEvent(applications: [token], threshold: threshold)
-    }
     do {
       trace("monitor-register-start", id: window.requestID, detail: "expiry")
       try center.startMonitoring(expiry, during: schedule(for: window.expiryInterval))
       trace("monitor-register-end", id: window.requestID, detail: "expiry")
       trace("monitor-register-start", id: window.requestID, detail: "access")
-      try center.startMonitoring(access, during: schedule(for: window.accessInterval), events: [.init("access-used"): event])
+      if trackUsage {
+        // Build 23's action process stops between `schedule` and the first
+        // registration trace, where the usage event used to be constructed.
+        // Keep this preparation in the host. Shield actions need only calendar
+        // start + expiry callbacks; they must not construct a usage event.
+        trace("usage-event-start", id: window.requestID)
+        let threshold = DateComponents(minute: window.usageSeconds / 60, second: window.usageSeconds % 60)
+        let event: DeviceActivityEvent
+        if #available(iOS 17.4, *) {
+          event = DeviceActivityEvent(applications: [token], threshold: threshold, includesPastActivity: false)
+        } else {
+          event = DeviceActivityEvent(applications: [token], threshold: threshold)
+        }
+        trace("usage-event-end", id: window.requestID)
+        try center.startMonitoring(access, during: schedule(for: window.accessInterval), events: [.init("access-used"): event])
+      } else {
+        try center.startMonitoring(access, during: schedule(for: window.accessInterval))
+      }
       trace("monitor-register-end", id: window.requestID, detail: "access")
       try verify(access, interval: window.accessInterval)
       try verify(expiry, interval: window.expiryInterval)
@@ -385,7 +395,7 @@ enum ScreenTimeStore {
       write("scheduledGrant", value)
       return value
     }
-    do { try schedule(scheduled.window, token: scheduled.token) }
+    do { try schedule(scheduled.window, token: scheduled.token, trackUsage: false) }
     catch {
       try? transaction {
         if read("scheduledGrant", ScheduledGrant.self)?.window.requestID == request.id {
@@ -442,7 +452,7 @@ enum ScreenTimeStore {
       UNNotificationRequest(identifier: "blockit.request", content: content, trigger: nil),
       withCompletionHandler: completion)
   }
-  static func finish(id: String, answer: String) throws {
+  static func finish(id: String, answer: String, trackUsage: Bool = false) throws {
     defer { stopUnusedMonitoring() }
     // A countdown may have completed automatically while Blockit was open.
     if try transaction({
@@ -457,7 +467,7 @@ enum ScreenTimeStore {
     }
     let window = AccessWindow(activeRequestID: id, now: Date().timeIntervalSince1970, sessionMinutes: request.sessionMinutes ?? 15)
     // Registration is outside the shared lock, and must succeed before unshielding.
-    try schedule(window, token: request.token)
+    try schedule(window, token: request.token, trackUsage: trackUsage)
     try transaction {
       // Another completion (or the original start callback) may have won while
       // DeviceActivity IPC was in flight. Finishing the same request is idempotent.

@@ -65,7 +65,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
       guard !reply.finished else { return }
       if request.mode == "countdown" {
         if request.readyAt <= Date().timeIntervalSince1970 {
-          try ScreenTimeStore.finish(id: request.id, answer: "")
+          try ScreenTimeStore.finish(id: request.id, answer: "", trackUsage: false)
           reply.send(.none, reason: "pause-completed")
           return
         }

@@ -50,7 +50,7 @@ public class ScreenTimeModule: Module {
         return request.id
       }
       if let id = readyID {
-        try ScreenTimeStore.finish(id: id, answer: "")
+        try ScreenTimeStore.finish(id: id, answer: "", trackUsage: true)
       }
       try ScreenTimeStore.transaction { ScreenTimeStore.apply() }
       let notifications = await UNUserNotificationCenter.current().notificationSettings()
@@ -189,7 +189,7 @@ public class ScreenTimeModule: Module {
               "groupName": request.groupName ?? "Мої застосунки", "appId": ScreenTimeStore.applicationID(request.token)]
     }
     AsyncFunction("finish") { (id: String, answer: String) throws in
-      do { try ScreenTimeStore.finish(id: id, answer: answer) }
+      do { try ScreenTimeStore.finish(id: id, answer: answer, trackUsage: true) }
       catch { ScreenTimeStore.recordFailure(error); throw error }
     }
     AsyncFunction("cancelRequest") {
