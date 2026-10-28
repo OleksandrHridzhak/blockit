@@ -104,6 +104,69 @@ enum ScreenTimeStore {
     let message: String
     let detail: String
   }
+  struct ProtectionOverride: Codable {
+    let until: Double // Zero means disabled until manually resumed.
+    let monitorID: String?
+  }
+  static var protectionOverrides: [String: ProtectionOverride] {
+    read("protectionOverrides", [String: ProtectionOverride].self) ?? [:]
+  }
+  static func overrideTokens(_ scope: String) -> Set<ApplicationToken> {
+    if scope.hasPrefix("app:"), let token = selectedToken(id: String(scope.dropFirst(4))) { return [token] }
+    if scope.hasPrefix("group:"), let group = groups.first(where: { $0.id == String(scope.dropFirst(6)) && $0.id != "legacy" }) { return group.tokens }
+    return []
+  }
+  static var suspendedTokens: Set<ApplicationToken> {
+    protectionOverrides.reduce(into: Set<ApplicationToken>()) { tokens, entry in
+      if entry.value.until == 0 || entry.value.until > Date().timeIntervalSince1970 {
+        tokens.formUnion(overrideTokens(entry.key))
+      }
+    }
+  }
+  static func setProtectionOverride(scope: String, minutes: Int) throws {
+    defer { stopUnusedMonitoring() }
+    guard minutes >= -1 && minutes <= 1440 else { throw Failure.answer }
+    try transaction { guard !overrideTokens(scope).isEmpty else { throw Failure.invalidRequest } }
+    let window = minutes > 0 ? AccessWindow(activeRequestID: "quick." + UUID().uuidString, now: Date().timeIntervalSince1970, sessionMinutes: minutes) : nil
+    let until = window?.endsAt ?? 0
+    let monitorID = window?.requestID
+    // Register and verify automatic restoration before removing any shield.
+    // DeviceActivity IPC must stay outside the cross-process lock.
+    if let monitorID, let window {
+      let interval = window.expiryInterval
+      let calendar = Calendar.current
+      let fullDate = minutes == 1440
+      let fields: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+      let schedule = DeviceActivitySchedule(
+        intervalStart: fullDate ? calendar.dateComponents(fields, from: Date(timeIntervalSince1970: interval.startsAt)) : interval.components(at: interval.startsAt, calendar: calendar),
+        intervalEnd: fullDate ? calendar.dateComponents(fields, from: Date(timeIntervalSince1970: interval.endsAt)) : interval.components(at: interval.endsAt, calendar: calendar), repeats: false)
+      do {
+        try center.startMonitoring(DeviceActivityName(window.expiryMonitorID), during: schedule)
+        let active = window.accessInterval
+        let activeSchedule = DeviceActivitySchedule(
+          intervalStart: active.components(at: active.startsAt, calendar: calendar),
+          intervalEnd: active.components(at: active.endsAt, calendar: calendar), repeats: false)
+        try center.startMonitoring(DeviceActivityName(monitorID), during: activeSchedule)
+        guard interval.matches(center.schedule(for: DeviceActivityName(window.expiryMonitorID))?.nextInterval),
+              active.matches(center.schedule(for: DeviceActivityName(monitorID))?.nextInterval) else { throw Failure.monitoringUnavailable }
+      } catch {
+        center.stopMonitoring([DeviceActivityName(monitorID), DeviceActivityName(window.expiryMonitorID)])
+        throw error
+      }
+    }
+    try transaction {
+      let tokens = overrideTokens(scope)
+      guard !tokens.isEmpty else { throw Failure.invalidRequest }
+      var saved = protectionOverrides
+      if minutes == 0 { saved.removeValue(forKey: scope) }
+      else { saved[scope] = ProtectionOverride(until: until, monitorID: monitorID) }
+      write("protectionOverrides", saved)
+      if let request = pending, tokens.contains(request.token) { clearRequest() }
+      if let grant = read("grant", Grant.self), tokens.contains(grant.token) { defaults.removeObject(forKey: "grant") }
+      apply()
+      trace("protection-override", id: monitorID ?? "manual", detail: "minutes=\(minutes)")
+    }
+  }
   static func recordFailure(_ error: Error) {
     try? transaction {
       let nativeError = error as NSError
@@ -210,14 +273,24 @@ enum ScreenTimeStore {
       if let scheduled = read("scheduledGrant", ScheduledGrant.self) { ids.insert(scheduled.window.requestID) }
       let requestIDs = ids
       ids.formUnion(requestIDs.map { $0 + ".expiry" })
+      for value in protectionOverrides.values {
+        if value.until > Date().timeIntervalSince1970, let monitorID = value.monitorID {
+          ids.insert(monitorID); ids.insert(monitorID + ".expiry")
+        }
+      }
       return ids
     }) else { return }
     let unused = activities.filter { !keep.contains($0.rawValue) }
     if !unused.isEmpty { center.stopMonitoring(unused) }
   }
   static func apply() {
+    let overrides = protectionOverrides.filter {
+      ($0.value.until == 0 || $0.value.until > Date().timeIntervalSince1970) && !overrideTokens($0.key).isEmpty
+    }
+    write("protectionOverrides", overrides)
     guard policy.enabled else { settings.clearAllSettings(); return }
     var tokens = selection.applicationTokens
+    tokens.subtract(suspendedTokens)
     if let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
       tokens.remove(grant.token)
     } else {
@@ -230,7 +303,7 @@ enum ScreenTimeStore {
     settings.shield.webDomains = nil
   }
   static func request(for token: ApplicationToken) throws -> Request {
-    guard policy.enabled, selection.applicationTokens.contains(token) else { throw Failure.invalidRequest }
+    guard policy.enabled, selection.applicationTokens.contains(token), !suspendedTokens.contains(token) else { throw Failure.invalidRequest }
     if let existing = pending, existing.token == token { return existing }
     clearRequest()
     defaults.removeObject(forKey: "lastFailure")

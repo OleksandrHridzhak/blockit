@@ -163,7 +163,7 @@ export function ListRow({
 export function AppBadge({
   name,
   color,
-  size = 32,
+  size = 44,
 }: {
   name: string;
   color?: string;
@@ -176,6 +176,7 @@ export function AppBadge({
       style={{
         width: size,
         height: size,
+        flexShrink: 0,
         borderRadius: Math.round(size * 0.22),
         backgroundColor: bg,
         alignItems: 'center',

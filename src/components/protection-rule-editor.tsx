@@ -7,6 +7,7 @@ import { groupModes } from '@/features/groups/service';
 import { type AppRule, getEffectiveSeconds } from '@/features/preview/store';
 import { screenTime, type PauseMode } from '@/features/screen-time/client';
 import { parseSessionMinutes } from '@/core/session-duration';
+import { parsePauseSeconds, pauseDurationText, type PauseUnit } from '@/core/pause-duration';
 import { challengeCodeLength, challengeRounds, hasPauseTimer, isMicrolearning, microlearningRoute, PAUSE_PHRASE } from '@/core/pause-mode-settings';
 
 export interface RuleDraft extends AppRule { curiosity: boolean }
@@ -31,10 +32,16 @@ export function ProtectionRuleEditor({ initial, demo, label, identity, selection
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [modePickerOpen, setModePickerOpen] = useState(false);
-  const [pauseText, setPauseText] = useState(() => String(Math.ceil(initial.seconds / 60)));
-  const pauseMinutes = parseSessionMinutes(pauseText);
-  const pauseError = timedPauseError();
-  function timedPauseError() { return hasPauseTimer(draft.mode) && pauseMinutes === null ? 'Введи цілу кількість хвилин від 1 до 1440.' : ''; }
+  const [pauseUnit, setPauseUnit] = useState<PauseUnit>('seconds');
+  const [pauseText, setPauseText] = useState(() => String(initial.seconds));
+  const pauseSeconds = parsePauseSeconds(pauseText, pauseUnit);
+  const pauseError = hasPauseTimer(draft.mode) && pauseSeconds === null
+    ? pauseUnit === 'seconds' ? 'Введи цілу кількість секунд від 1 до 86400.' : 'Введи від 1 секунди до 1440 хвилин. Можна дробове число хвилин.' : '';
+  function changePauseUnit(unit: PauseUnit) {
+    if (unit === pauseUnit) return;
+    if (pauseSeconds !== null) setPauseText(pauseDurationText(pauseSeconds, unit));
+    setPauseUnit(unit);
+  }
   const [sessionText, setSessionText] = useState(() => String(initial.sessionMinutes ?? (demo ? 5 : 15)));
   const [mathRoundsText, setMathRoundsText] = useState(() => String(challengeRounds(initial.mathRounds ?? initial.rounds)));
   const [stroopRoundsText, setStroopRoundsText] = useState(() => String(challengeRounds(initial.stroopRounds ?? initial.rounds)));
@@ -69,7 +76,7 @@ export function ProtectionRuleEditor({ initial, demo, label, identity, selection
         if (status.authorization !== 'approved') await screenTime.authorize();
         if (draft.curiosity || draft.mode !== 'countdown') await screenTime.notifications();
       }
-      if (await onSave({ ...draft, seconds: pauseMinutes === null ? draft.seconds : pauseMinutes * 60, sessionMinutes, rounds: challengeRounds(Number(roundsText)), codeLength: challengeCodeLength(Number(codeLengthText)),
+      if (await onSave({ ...draft, seconds: pauseSeconds ?? draft.seconds, sessionMinutes, rounds: challengeRounds(Number(roundsText)), codeLength: challengeCodeLength(Number(codeLengthText)),
         mathRounds: challengeRounds(Number(mathRoundsText)), stroopRounds: challengeRounds(Number(stroopRoundsText)),
       }, pick)) router.back();
     } catch (e) { setError(e instanceof Error ? e.message : 'Не вдалося зберегти налаштування.'); }
@@ -126,14 +133,21 @@ export function ProtectionRuleEditor({ initial, demo, label, identity, selection
       : isMicrolearning(draft.mode) ? 'Пауза починається в Blockit після переходу зі сповіщення. Читати необов’язково.'
       : roundsMode || draft.mode === 'passcode' || draft.mode === 'typing' || draft.mode === 'reflection'
       ? 'Після виконання можна відкрити застосунок без додаткового очікування.'
-      : draft.mode === 'countdown' && demo && draft.escalating ? `Кожне відкриття додає 5 с. Зараз: ${getEffectiveSeconds({ ...draft, seconds: (pauseMinutes ?? 1) * 60 })} с.` : undefined)}>
+      : draft.mode === 'countdown' && demo && draft.escalating ? `Кожне відкриття додає 5 с. Зараз: ${getEffectiveSeconds({ ...draft, seconds: pauseSeconds ?? draft.seconds })} с.` : undefined)}>
       {timed && <View style={{ padding: 12, gap: 12 }}>
         <Text style={ui.body}>{draft.curiosity ? 'Час перед доступом' : draft.mode === 'breathing' ? 'Тривалість вправи' : 'Тривалість паузи'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <TextInput accessibilityLabel="Тривалість паузи у хвилинах" value={pauseText} onChangeText={setPauseText}
-            editable={!busy} keyboardType="number-pad" inputMode="numeric" maxLength={4} selectTextOnFocus
+          <TextInput accessibilityLabel={pauseUnit === 'seconds' ? 'Тривалість паузи у секундах' : 'Тривалість паузи у хвилинах'} value={pauseText} onChangeText={setPauseText}
+            editable={!busy} keyboardType={pauseUnit === 'seconds' ? 'number-pad' : 'decimal-pad'} inputMode={pauseUnit === 'seconds' ? 'numeric' : 'decimal'} maxLength={10} selectTextOnFocus
             style={[styles.minutesInput, pauseError !== '' && { borderColor: appleTheme.red }]} />
-          <Text style={ui.mutedText}>хв</Text>
+          <View style={{ flexDirection: 'row', flexShrink: 1, backgroundColor: appleTheme.tertiaryBg, borderRadius: 10, padding: 3 }}>
+            {(['seconds', 'minutes'] as const).map(unit => <Pressable key={unit} accessibilityRole="button"
+              accessibilityLabel={unit === 'seconds' ? 'Секунди' : 'Хвилини'} accessibilityState={{ selected: pauseUnit === unit, disabled: busy }}
+              disabled={busy} onPress={() => changePauseUnit(unit)}
+              style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 8, justifyContent: 'center', backgroundColor: pauseUnit === unit ? appleTheme.fill : 'transparent' }}>
+              <Text style={[ui.body, { color: pauseUnit === unit ? appleTheme.label : appleTheme.secondaryLabel }]}>{unit === 'seconds' ? 'сек' : 'хв'}</Text>
+            </Pressable>)}
+          </View>
         </View>
       </View>}
       {isMicrolearning(draft.mode) && <ListRow showSeparator={false}><Text style={ui.body}>Тема: CustDev</Text></ListRow>}
@@ -175,14 +189,14 @@ export function ProtectionRuleEditor({ initial, demo, label, identity, selection
       {notice !== '' && <ListRow showSeparator={false}><Text accessibilityLiveRegion="polite" style={ui.mutedText}>{notice}</Text></ListRow>}
     </ListSection>}
     <ListSection title="ДІЇ">
-      <ListRow disabled={busy || sessionMinutes === null || Boolean(challengeError || pauseError)} onPress={() => draft.curiosity ? router.push({ pathname: '/curiosity', params: { preview: '1' } }) : isMicrolearning(draft.mode) ? router.push({ pathname: microlearningRoute(draft.mode), params: { preview: '1', seconds: String((pauseMinutes ?? 1) * 60) } } as unknown as Href) : router.push({ pathname: '/intervene', params: {
-        preview: '1', seconds: String(getEffectiveSeconds({ ...draft, seconds: (pauseMinutes ?? 1) * 60 })), mode: draft.mode, label,
+      <ListRow disabled={busy || sessionMinutes === null || Boolean(challengeError || pauseError)} onPress={() => draft.curiosity ? router.push({ pathname: '/curiosity', params: { preview: '1' } }) : isMicrolearning(draft.mode) ? router.push({ pathname: microlearningRoute(draft.mode), params: { preview: '1', seconds: String(pauseSeconds ?? draft.seconds) } } as unknown as Href) : router.push({ pathname: '/intervene', params: {
+        preview: '1', seconds: String(getEffectiveSeconds({ ...draft, seconds: pauseSeconds ?? draft.seconds })), mode: draft.mode, label,
         sessionMinutes: String(sessionMinutes ?? (demo ? 5 : 15)),
         rounds: String(challengeRounds(Number(roundsText))), codeLength: String(challengeCodeLength(Number(codeLengthText))),
       } })}><Text style={[ui.body, { color: appleTheme.tint }]}>Спробувати паузу</Text></ListRow>
       <ListRow showSeparator={false} disabled={busy} onPress={() => {
         setDraft({ seconds: 20, mode: 'countdown', sessionMinutes: demo ? 5 : 15, escalating: false, todayOpens: 0, curiosity: false });
-        setSessionText(String(demo ? 5 : 15)); setPauseText('1');
+        setSessionText(String(demo ? 5 : 15)); setPauseUnit('seconds'); setPauseText('20');
         setMathRoundsText('3'); setStroopRoundsText('3'); setCodeLengthText('6');
       }}><Text style={ui.body}>Скинути налаштування</Text></ListRow>
     </ListSection>

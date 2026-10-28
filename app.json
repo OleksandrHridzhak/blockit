@@ -4,11 +4,11 @@
     "slug": "blockit",
     "version": "0.2.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/branding/blockit-mascot-land-sky-v4.png",
     "scheme": "blockit",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/branding/blockit-mascot-land-sky-v4.png",
       "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795",
       "supportsTablet": false,
       "infoPlist": {
@@ -44,7 +44,7 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/branding/blockit-mascot-land-sky-v4.png"
     },
     "plugins": [
       "expo-router",

@@ -5,6 +5,7 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { screenTime } from '@/features/screen-time/client';
 import { interventionDestination } from '@/features/curiosity/storage';
@@ -46,7 +47,7 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ThemeProvider value={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#000000', card: '#1C1C1E', text: '#FFFFFF', primary: '#0A84FF', border: '#2C2C2E' } }}>
+    <GestureHandlerRootView style={{ flex: 1 }}><ThemeProvider value={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#000000', card: '#1C1C1E', text: '#FFFFFF', primary: '#0A84FF', border: '#2C2C2E' } }}>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
@@ -64,6 +65,6 @@ export default function RootLayout() {
           options={{ presentation: 'modal', gestureEnabled: true }}
         />
       </Stack>
-    </ThemeProvider>
+    </ThemeProvider></GestureHandlerRootView>
   );
 }

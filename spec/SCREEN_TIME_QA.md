@@ -18,6 +18,12 @@ Do not call this release production ready until the signed device checks below p
 ## Local evidence
 TypeScript, lint, unit tests, generated Xcode structure and browser UI can be checked on Windows. They do not validate Apple entitlements, Swift compilation, shield delivery, app switching or monitor scheduling.
 
+## Per-app and per-group quick actions
+- Swipe right to suspend/resume, left to disable/delete. Vertical scrolling and a plain tap must still work. Opening another row closes the previous panel. The ellipsis exposes the same actions without a gesture; hidden panels must not trap VoiceOver/keyboard focus.
+- Suspend one standalone app for 1 minute, then a group for 7 minutes. Both schedules must be confirmed before unshielding. Stay outside Blockit and verify automatic restoration on iOS 16, including with the host terminated. Check midnight and 1440-minute schedules. Registration failure must leave the existing protection state intact.
+- Resume before expiry, replace a suspension, and allow the old callback to arrive: it must neither suspend nor resume another target. Pausing one group must preserve an unrelated access session and other groups' schedules.
+- Disable indefinitely, restart Blockit, then resume. Delete confirmation must be cancellable without changing protection; confirmed removal must clean the target's override without touching another target. Old binaries must show the upgrade error rather than simulate a native action.
+
 ## Short access and automatic return regression
 - On iOS 16, finish a countdown from the host after it was registered in the shield extension. The grant must get a fresh, already-active `.active` monitor, not reuse the earlier future pause interval. `schedule-readback` must match both planned intervals before unshielding. A missing or wrong-day interval must keep access closed.
 - Let a delayed end/expiry callback for the original pause arrive after the fresh grant. It must not clear that grant or its active monitoring. A second completion of the same request must remain idempotent.

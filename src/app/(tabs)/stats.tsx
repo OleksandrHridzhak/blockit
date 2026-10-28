@@ -85,7 +85,7 @@ export default function StatsScreen() {
     <ListSection title="ПРОГРЕС ЗА ГРУПАМИ" footer="За збереженою історією пауз.">
       {data.groups.length === 0 ? <ListRow showSeparator={false}><Text style={ui.mutedText}>Поки немає даних</Text></ListRow> : data.groups.map((group, index) =>
         <ListRow key={group.id} showSeparator={index < data.groups.length - 1}>
-          <AppBadge name={group.name} size={32} />
+          <AppBadge name={group.name} />
           <View style={{ flex: 1 }}><Text style={styles.groupName}>{group.name}</Text><Text style={styles.footnote}>{group.dismissed} відмов · {group.continued} доступів</Text></View>
           <Text style={styles.groupCount}>{group.attempts}</Text>
         </ListRow>)}

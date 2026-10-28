@@ -8,6 +8,15 @@ import UIKit
 public class ScreenTimeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("BlockitScreenTime")
+    AsyncFunction("getProtectionOverrides") { () throws -> [String: Double] in
+      try ScreenTimeStore.transaction {
+        ScreenTimeStore.apply()
+        return ScreenTimeStore.protectionOverrides.mapValues { $0.until * 1000 }
+      }
+    }
+    AsyncFunction("setProtectionOverride") { (scope: String, minutes: Int) throws in
+      try ScreenTimeStore.setProtectionOverride(scope: scope, minutes: minutes)
+    }
     AsyncFunction("getDiagnostics") { () throws -> String in
       // Do not reconcile access here: inspecting a failure must preserve it.
       let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self)
@@ -272,7 +281,22 @@ private struct FamilyAppLabelContent: View {
         Label("Застосунок", systemImage: "app")
       }
     }
+    .labelStyle(BlockitAppLabelStyle())
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+  }
+}
+
+private struct BlockitAppLabelStyle: LabelStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(spacing: 14) {
+      configuration.icon
+        .scaleEffect(1.7)
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
+      configuration.title
+        .font(.body)
+        .fixedSize(horizontal: false, vertical: true)
+    }
   }
 }
 

@@ -14,7 +14,7 @@ export default function AppRuleScreen() {
   return <ProtectionRuleEditor key={id} demo label={name} valid={Boolean(id)}
     initial={{ ...getAppRule(id), curiosity: appCuriosityEnabled(id, 'legacy') }}
     identity={() => <View style={{ alignItems: 'center', gap: 12, paddingVertical: 12 }}>
-      <AppBadge name={name} color={catalog?.accentColor} size={56} /><Text style={ui.title}>{name}</Text>
+      <AppBadge name={name} color={catalog?.accentColor} size={72} /><Text style={ui.title}>{name}</Text>
     </View>}
     onSave={async draft => {
       const { curiosity, ...rule } = draft;

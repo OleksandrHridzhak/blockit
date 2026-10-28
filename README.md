@@ -10,6 +10,8 @@ An iOS attention pause built with Expo 58 and Apple's Screen Time APIs. No Short
 
 ## Validate
 
+For development startup, follow [the quick-start guide](spec/DEV_QUICK_START.md). Browser preview: `npm run web -- --localhost --port 8081` with existing dependencies.
+
 npm run typecheck
 npm run lint
 npm test -- --runInBand

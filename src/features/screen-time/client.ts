@@ -20,6 +20,8 @@ export interface ProtectionStatus {
 }
 export interface PauseRequest { id: string; readyAt: number; mode: PauseMode; sessionMinutes?: number; groupId?: string; groupName?: string; appId?: string }
 interface NativeScreenTime {
+  getProtectionOverrides?(): Promise<Record<string, number>>;
+  setProtectionOverride?(scope: string, minutes: number): Promise<void>;
   getStatus(): Promise<ProtectionStatus>;
   requestAuthorization(): Promise<void>;
   requestNotifications(): Promise<boolean>;
@@ -60,6 +62,12 @@ async function ensureMode(module: NativeScreenTime, mode: GroupMode) {
   if (mode === 'microlearning-v2' && !(await module.getStatus()).supportsMicrolearningV2) throw new Error('Онови Blockit, щоб користуватися Microlearning v2.');
 }
 export const screenTime = {
+  protectionOverrides: () => native?.getProtectionOverrides?.() ?? Promise.resolve({} as Record<string, number>),
+  setProtectionOverride: (scope: string, minutes: number) => {
+    const module = requireNative();
+    if (!module.setProtectionOverride) return Promise.reject(new Error('Для швидких дій потрібна нова iOS-збірка Blockit.'));
+    return module.setProtectionOverride(scope, minutes);
+  },
   selectedApps: () => native?.getSelectedApps?.() ?? (native ? Promise.reject(new Error('Онови Blockit, щоб бачити окремі застосунки.')) : Promise.resolve([])),
   saveAppRule: async (id: string, seconds: number, mode: GroupMode, sessionMinutes = 15) => {
     const module = requireNative();

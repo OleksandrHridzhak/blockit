@@ -9,6 +9,6 @@ const NativeLabel = Platform.OS === 'ios'
 export function FamilyAppLabel({ tokenId, fallback = 'Застосунок' }: { tokenId: string; fallback?: string }) {
   const { fontScale } = useWindowDimensions();
   return NativeLabel
-    ? <View pointerEvents="none" style={{ flex: 1 }}><NativeLabel tokenId={tokenId} style={{ width: '100%', height: Math.max(44, 44 * fontScale) }} /></View>
+    ? <View pointerEvents="none" style={{ flex: 1 }}><NativeLabel tokenId={tokenId} style={{ width: '100%', height: Math.max(56, 56 * fontScale) }} /></View>
     : <Text style={ui.body}>{fallback}</Text>;
 }

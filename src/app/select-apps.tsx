@@ -116,7 +116,7 @@ export default function SelectAppsScreen() {
               showSeparator={!isLast}
               onPress={() => toggle(app.id)}
             >
-              <AppBadge name={app.name} color={catalog?.accentColor} size={32} />
+              <AppBadge name={app.name} color={catalog?.accentColor} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.appNameText}>{app.name}</Text>
               </View>

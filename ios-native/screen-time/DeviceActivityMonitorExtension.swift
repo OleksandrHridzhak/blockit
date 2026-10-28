@@ -8,6 +8,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
   }
   override func intervalDidStart(for activity: DeviceActivityName) {
     super.intervalDidStart(for: activity)
+    if reconcileQuickAction(activity) { return }
     ScreenTimeStore.trace("interval-start", id: activity.rawValue, detail: activity.rawValue.hasSuffix(".expiry") ? "expiry" : "access")
     if activity.rawValue.hasSuffix(".expiry") {
       expireGrant(id: String(activity.rawValue.dropLast(".expiry".count)))
@@ -18,6 +19,7 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
   }
   override func intervalDidEnd(for activity: DeviceActivityName) {
     super.intervalDidEnd(for: activity)
+    if reconcileQuickAction(activity) { return }
     ScreenTimeStore.trace("interval-end", id: activity.rawValue)
     if activity.rawValue.hasSuffix(".expiry-backup") {
       expireGrant(id: String(activity.rawValue.dropLast(".expiry-backup".count)))
@@ -43,6 +45,15 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     ScreenTimeStore.trace("usage-threshold", id: activity.rawValue)
     guard event.rawValue == "access-used" else { return }
     expireGrant(id: activity.rawValue)
+  }
+
+  private func reconcileQuickAction(_ activity: DeviceActivityName) -> Bool {
+    guard activity.rawValue.hasPrefix("quick.") else { return false }
+    do {
+      try ScreenTimeStore.transaction { ScreenTimeStore.apply() }
+      ScreenTimeStore.trace("quick-action-reconciled", id: activity.rawValue)
+    } catch { ScreenTimeStore.recordFailure(error) }
+    return true
   }
 
   private func expireGrant(id: String) {

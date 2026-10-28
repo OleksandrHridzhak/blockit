@@ -15,6 +15,7 @@ import {
   getAppRule,
   getEffectiveSeconds,
   previewApps,
+  removeAppFromPreview,
 } from '@/features/preview/store';
 import { screenTime } from '@/features/screen-time/client';
 import { getCatalogApp } from '@/core/catalog';
@@ -24,12 +25,25 @@ import { FamilyAppLabel } from '@/components/family-app-label';
 import { EditorialIcon } from '@/components/editorial-icon';
 import { appCuriosityEnabled, curiosityEnabled } from '@/features/curiosity/storage';
 import { hasPauseTimer, isMicrolearning, microlearningRoute } from '@/core/pause-mode-settings';
+import { activeOverride, loadOverrides, setOverride, type ProtectionOverrides, type QuickTarget } from '@/features/groups/quick-actions';
+import { QuickActionRow } from '@/components/quick-action-row';
+import { QuickActionsSheet, type QuickPanel } from '@/components/quick-actions-sheet';
 
 export default function HomeScreen() {
   const { view, busy, error, run, refresh } = useProtection();
   const [groups, setGroups] = useState<AppGroup[]>([]);
   const [groupError, setGroupError] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const [overrides, setOverrides] = useState<ProtectionOverrides>({});
+  const [quickPanel, setQuickPanel] = useState<QuickPanel | null>(null);
+  const demo = view?.demo;
+  useFocusEffect(useCallback(() => {
+    if (demo === undefined) return;
+    let alive = true;
+    loadOverrides(demo).then(values => { if (alive) setOverrides(values); })
+      .catch(e => { if (alive) setGroupError(e instanceof Error ? e.message : 'Не вдалося перевірити швидкі дії.'); });
+    return () => { alive = false; };
+  }, [demo]));
   useFocusEffect(useCallback(() => {
     let alive = true;
     groupsService.load().then(data => { if (alive) { setGroups(data.groups); setGroupError(''); } })
@@ -37,10 +51,42 @@ export default function HomeScreen() {
     return () => { alive = false; };
   }, []));
   useEffect(() => {
-    if (!view?.snoozeUntil) return;
+    if (!view?.snoozeUntil && !Object.values(overrides).some(until => until > Date.now())) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [view?.snoozeUntil]);
+  }, [view?.snoozeUntil, overrides]);
+
+  async function reloadQuickActions() {
+    if (!view) return;
+    const [values, data] = await Promise.all([loadOverrides(view.demo), groupsService.load(), refresh()]);
+    setOverrides(values); setGroups(data.groups);
+  }
+  async function applyQuickAction(target: QuickTarget, minutes: number) {
+    if (!view) return;
+    await setOverride(view.demo, target.scope, minutes);
+    await reloadQuickActions();
+  }
+  async function removeQuickTarget(target: QuickTarget) {
+    if (!view) return;
+    if (target.kind === 'group') await groupsService.remove(target.id, view.demo);
+    else if (view.demo) removeAppFromPreview(target.id);
+    else await screenTime.removeApp(target.id);
+    if (view.demo) await setOverride(true, target.scope, 0);
+    await reloadQuickActions();
+  }
+  function quickProps(target: QuickTarget) {
+    const until = activeOverride(overrides, target.scope, now);
+    const suspended = until !== undefined;
+    const open = (mode: QuickPanel['mode']) => setQuickPanel({ target, mode, suspended });
+    return {
+      name: target.name, suspended, disabled: busy,
+      status: until === 0 ? 'Захист вимкнено' : until !== undefined
+        ? `Призупинено до ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : undefined,
+      onPause: () => open('pause'), onMore: () => open('all'), onDelete: () => open('delete'),
+      onResume: () => void run(() => applyQuickAction(target, 0)),
+      onDisable: () => void run(() => applyQuickAction(target, -1)),
+    };
+  }
 
   const getModeLabel = (mode?: string) =>
     mode === 'microlearning-v2' ? 'Microlearning v2'
@@ -203,12 +249,11 @@ export default function HomeScreen() {
               const opensToday = appRule.todayOpens ?? 0;
 
               return (
-                <ListRow
-                  key={id}
+                <QuickActionRow key={id} {...quickProps({ scope: `app:${id}`, id, kind: 'app', name })}><ListRow
                   showSeparator={true}
                   onPress={() => editAppRule(id)}
                 >
-                  <AppBadge name={name} color={catalog?.accentColor} size={32} />
+                  <AppBadge name={name} color={catalog?.accentColor} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.appNameText}>{name}</Text>
                     <Text style={styles.appDetailText}>
@@ -217,17 +262,17 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   <Text style={styles.chevron}>›</Text>
-                </ListRow>
+                </ListRow></QuickActionRow>
               );
             })
           ) : (
-            view.apps.map(id => <ListRow key={id} onPress={() => router.push({ pathname: '/selected-app', params: { appId: id } })}>
+            view.apps.map(id => <QuickActionRow key={id} {...quickProps({ scope: `app:${id}`, id, kind: 'app', name: 'Застосунок' })}><ListRow onPress={() => router.push({ pathname: '/selected-app', params: { appId: id } })}>
               <View style={{ flex: 1, gap: 3 }}>
                 <FamilyAppLabel tokenId={id} />
                 <Text style={styles.appDetailText}>{hasPauseTimer(view.appRules?.[id]?.mode ?? view.mode) ? `${view.appRules?.[id]?.seconds ?? view.seconds} с · ` : ''}{appCuriosityEnabled(id, 'legacy') ? 'Curiosity Mode' : getModeLabel(view.appRules?.[id]?.mode ?? view.mode)}</Text>
               </View>
               <Text style={styles.chevron}>›</Text>
-            </ListRow>)
+            </ListRow></QuickActionRow>)
           )}
 
           {/* Plus Add Row as the last item inside the list */}
@@ -244,19 +289,21 @@ export default function HomeScreen() {
       )}
       {groupError !== '' && <Text style={styles.errorText}>{groupError}</Text>}
       <ListSection title="ГРУПИ ЗАСТОСУНКІВ" footer="Об’єднай застосунки в групу зі спільними налаштуваннями.">
-        {groups.map(group => <ListRow key={group.id} onPress={() => router.push({ pathname: '/group', params: { id: group.id } })}>
-          <AppBadge name={group.name} size={32} />
+        {groups.map(group => <QuickActionRow key={group.id} {...quickProps({ scope: `group:${group.id}`, id: group.id, kind: 'group', name: group.name })}><ListRow onPress={() => router.push({ pathname: '/group', params: { id: group.id } })}>
+          <AppBadge name={group.name} />
           <View style={{ flex: 1 }}>
             <Text style={styles.appNameText}>{group.name}</Text>
             <Text style={styles.appDetailText}>{group.appIds.length} застосунків · {hasPauseTimer(group.previewRule?.mode ?? group.mode) ? `${group.seconds} с · ` : ''}{curiosityEnabled(group.id) ? 'Curiosity Mode' : getModeLabel(group.previewRule?.mode ?? group.mode)}</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
-        </ListRow>)}
+        </ListRow></QuickActionRow>)}
         <ListRow showSeparator={false} onPress={() => router.push('/group')}>
           <View style={styles.addIconBadge}><EditorialIcon name="add" active size={19} /></View>
           <Text style={styles.addAppLabel}>Створити групу</Text>
         </ListRow>
       </ListSection>
+      {quickPanel && <QuickActionsSheet key={`${quickPanel.target.scope}:${quickPanel.mode}`} panel={quickPanel} onClose={() => setQuickPanel(null)}
+        onApply={minutes => applyQuickAction(quickPanel.target, minutes)} onRemove={() => removeQuickTarget(quickPanel.target)} />}
     </Page>
   );
 }
