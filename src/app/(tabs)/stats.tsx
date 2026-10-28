@@ -1,13 +1,16 @@
+import { useThemeStyles, createThemeStyles } from '@/features/appearance/theme';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Action, AppBadge, appleTheme, ListRow, ListSection, Page, ui } from '@/components/protection-ui';
+import { Action, AppBadge, appleTheme, ListRow, ListSection, Page, ui as sharedUI } from '@/components/protection-ui';
 import { attemptTrend, protectionStats } from '@/core/protection-stats';
 import { screenTime } from '@/features/screen-time/client';
 
 const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
 export default function StatsScreen() {
+  const ui = useThemeStyles(sharedUI);
+  const styles = useThemeStyles(themeStyles);
   const [data, setData] = useState(() => protectionStats([], Date.now(), timeZone()));
   const [now, setNow] = useState(() => Date.now());
   const [period, setPeriod] = useState<'days' | 'weeks'>('days');
@@ -93,29 +96,29 @@ export default function StatsScreen() {
   </Page>;
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   header: { paddingHorizontal: 4, paddingTop: 8, gap: 4 },
-  subtitle: { fontFamily: ui.body.fontFamily, fontSize: 15, color: appleTheme.secondaryLabel },
+  subtitle: { fontFamily: sharedUI.body.fontFamily, fontSize: 15, color: appleTheme.secondaryLabel },
   card: { backgroundColor: appleTheme.secondaryBg, borderRadius: 16, padding: 20, gap: 7 },
-  overline: { fontFamily: ui.body.fontFamily, fontSize: 12, fontWeight: '700', letterSpacing: 0.7, color: appleTheme.secondaryLabel },
-  number: { fontFamily: ui.body.fontFamily, fontSize: 52, fontWeight: '700', letterSpacing: -1.5, color: appleTheme.label },
-  comparison: { fontFamily: ui.body.fontFamily, fontSize: 13, color: appleTheme.tint, marginTop: 4 },
+  overline: { fontFamily: sharedUI.body.fontFamily, fontSize: 12, fontWeight: '700', letterSpacing: 0.7, color: appleTheme.secondaryLabel },
+  number: { fontFamily: sharedUI.body.fontFamily, fontSize: 52, fontWeight: '700', letterSpacing: -1.5, color: appleTheme.label },
+  comparison: { fontFamily: sharedUI.body.fontFamily, fontSize: 13, color: appleTheme.tint, marginTop: 4 },
   segment: { flexDirection: 'row', backgroundColor: appleTheme.tertiaryBg, borderRadius: 9, padding: 3, marginTop: 16 },
   segmentItem: { flex: 1, alignItems: 'center', paddingVertical: 7, borderRadius: 7 },
   segmentSelected: { backgroundColor: appleTheme.fill },
-  segmentText: { fontFamily: ui.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 13, fontWeight: '600' },
+  segmentText: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 13, fontWeight: '600' },
   segmentTextSelected: { color: appleTheme.label },
   plot: { height: 145, marginTop: 16, position: 'relative' },
   baseline: { position: 'absolute', left: 0, right: 0, top: 126, height: 1, backgroundColor: appleTheme.separatorSubtle },
   line: { position: 'absolute', height: 2, backgroundColor: appleTheme.tint },
   pointContainer: { position: 'absolute', width: 40, height: 28, alignItems: 'center', justifyContent: 'space-between' },
-  pointValue: { fontFamily: ui.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 11 },
+  pointValue: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 11 },
   point: { width: 8, height: 8, borderRadius: 4, backgroundColor: appleTheme.tint },
   labels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  barLabel: { fontFamily: ui.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 10 },
-  footnote: { fontFamily: ui.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 12, lineHeight: 17 },
+  barLabel: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 10 },
+  footnote: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.secondaryLabel, fontSize: 12, lineHeight: 17 },
   savedCard: { backgroundColor: appleTheme.secondaryBg, borderRadius: 16, padding: 20, gap: 8 },
-  savedValue: { fontFamily: ui.body.fontFamily, color: appleTheme.label, fontSize: 20, fontWeight: '600' },
-  groupName: { fontFamily: ui.body.fontFamily, color: appleTheme.label, fontSize: 16, fontWeight: '500' },
-  groupCount: { fontFamily: ui.body.fontFamily, color: appleTheme.label, fontSize: 16, fontWeight: '600' },
-});
+  savedValue: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.label, fontSize: 20, fontWeight: '600' },
+  groupName: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.label, fontSize: 16, fontWeight: '500' },
+  groupCount: { fontFamily: sharedUI.body.fontFamily, color: appleTheme.label, fontSize: 16, fontWeight: '600' },
+}));

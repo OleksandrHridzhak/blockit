@@ -1,5 +1,6 @@
+import { useThemeStyles } from '@/features/appearance/theme';
 import { useLocalSearchParams } from 'expo-router';
-import { AppBadge, ui } from '@/components/protection-ui';
+import { AppBadge, ui as sharedUI } from '@/components/protection-ui';
 import { ProtectionRuleEditor } from '@/components/protection-rule-editor';
 import { getCatalogApp } from '@/core/catalog';
 import { getAppRule, previewApps, removeAppFromPreview, saveAppRule } from '@/features/preview/store';
@@ -7,6 +8,7 @@ import { appCuriosityEnabled, setGroupCuriosity } from '@/features/curiosity/sto
 import { Text, View } from 'react-native';
 
 export default function AppRuleScreen() {
+  const ui = useThemeStyles(sharedUI);
   const { appId } = useLocalSearchParams<{ appId: string }>();
   const id = typeof appId === 'string' ? appId.trim().toLowerCase() : '';
   const catalog = getCatalogApp(id);

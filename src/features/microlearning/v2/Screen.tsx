@@ -1,13 +1,15 @@
+import { useThemeStyles, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from 'react';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Action, appleTheme, systemFont, ui } from '@/components/protection-ui';
+import { Action, appleTheme, systemFont, ui as sharedUI } from '@/components/protection-ui';
 import { useLearningSession } from '../useLearningSession';
 import { ReturnAppSetting } from '@/components/return-app-setting';
 import { type Answer, type V2Lesson } from './content';
 import { chooseV2Lesson, readV2Progress, recordV2Event, shuffledAnswers } from './progress';
 
 function SwipeSurface({ lesson, enabled, onAnswer, children }: PropsWithChildren<{ lesson: V2Lesson; enabled: boolean; onAnswer: (answer: Answer) => void }>) {
+  useAppTheme();
   const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => enabled && lesson.mechanic === 'myth' && Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
     onPanResponderRelease: (_, gesture) => {
@@ -20,6 +22,7 @@ function SwipeSurface({ lesson, enabled, onAnswer, children }: PropsWithChildren
 }
 
 export default function MicrolearningV2Screen() {
+  const styles = useThemeStyles(themeStyles);
   const session = useLearningSession('microlearning-v2');
   const [card, setCard] = useState(() => {
     const picked = chooseV2Lesson(readV2Progress());
@@ -110,7 +113,7 @@ export default function MicrolearningV2Screen() {
   </SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#080c0a' },
   header: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 4, paddingBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, brand: { color: '#b7dc9a', fontSize: 16, fontWeight: '600', fontFamily: systemFont },
@@ -133,5 +136,5 @@ const styles = StyleSheet.create({
   bottomMeta: { marginTop: 18 }, source: { color: '#78897a', fontSize: 11, lineHeight: 17, marginTop: 8 },
   error: { backgroundColor: appleTheme.secondaryBg, padding: 16, borderRadius: 14, marginTop: 20 },
   footer: { backgroundColor: '#080c0a', borderTopWidth: 1, borderTopColor: '#1d2b20', paddingTop: 12, paddingHorizontal: 16 },
-  footerNote: { ...ui.mutedText, fontSize: 11, textAlign: 'center', marginTop: 7, marginBottom: 5 },
-});
+  footerNote: { ...sharedUI.mutedText, fontSize: 11, textAlign: 'center', marginTop: 7, marginBottom: 5 },
+}));

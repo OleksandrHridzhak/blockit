@@ -1,12 +1,15 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { EditorialIcon } from './editorial-icon';
-import { appleTheme, ui } from './protection-ui';
+import { ui as sharedUI } from './protection-ui';
 import type { QuickActionRowProps } from './quick-action-row-props';
 
 let closeOpenRow: (() => void) | undefined;
 
 export function QuickActionRow({ children, name, status, suspended, disabled, onPause, onResume, onDisable, onDelete, onMore }: QuickActionRowProps) {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef({ x: 0, y: 0, origin: 0, value: 0, active: false, moved: false });

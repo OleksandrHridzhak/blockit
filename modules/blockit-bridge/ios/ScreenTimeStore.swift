@@ -110,7 +110,7 @@ enum ScreenTimeStore {
   struct AppRule: Codable {
     var seconds: Int
     var mode: String
-    var sessionMinutes: Int? = nil
+    var sessionMinutes: Double? = nil
   }
   struct AppGroup: Codable {
     var id: String
@@ -118,7 +118,7 @@ enum ScreenTimeStore {
     var seconds: Int
     var mode: String
     var tokens: Set<ApplicationToken>
-    var sessionMinutes: Int? = nil
+    var sessionMinutes: Double? = nil
   }
   struct Request: Codable {
     let id: String
@@ -128,7 +128,7 @@ enum ScreenTimeStore {
     let mode: String
     var groupID: String? = nil
     var groupName: String? = nil
-    var sessionMinutes: Int? = nil
+    var sessionMinutes: Double? = nil
     var learningSeconds: Int? = nil
   }
   struct Grant: Codable {
@@ -168,7 +168,7 @@ enum ScreenTimeStore {
     defer { stopUnusedMonitoring() }
     guard minutes >= -1 && minutes <= 1440 else { throw Failure.answer }
     try transaction { guard !overrideTokens(scope).isEmpty else { throw Failure.invalidRequest } }
-    let window = minutes > 0 ? AccessWindow(activeRequestID: "quick." + UUID().uuidString, now: Date().timeIntervalSince1970, sessionMinutes: minutes) : nil
+    let window = minutes > 0 ? AccessWindow(activeRequestID: "quick." + UUID().uuidString, now: Date().timeIntervalSince1970, sessionMinutes: Double(minutes)) : nil
     let until = window?.endsAt ?? 0
     let monitorID = window?.requestID
     // Register and verify automatic restoration before removing any shield.

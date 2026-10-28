@@ -1,7 +1,8 @@
+import { useThemeStyles } from '@/features/appearance/theme';
 import { useEffect, useState } from 'react';
 import { Share, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { Action, ListRow, ListSection, Page, SegmentedControl, ui } from '@/components/protection-ui';
+import { Action, ListRow, ListSection, Page, SegmentedControl, ui as sharedUI } from '@/components/protection-ui';
 import { screenTime } from '@/features/screen-time/client';
 
 interface Trace { time: number; event: string; request: string; detail: string; process?: string }
@@ -17,6 +18,7 @@ const eventNames: Record<string, string> = {
   'expiry-early': 'Системний сигнал надійшов зарано', 'shield-restored': 'Блокування відновлено',
 };
 export default function DiagnosticsScreen() {
+  const ui = useThemeStyles(sharedUI);
   const [value, setValue] = useState<Diagnostics | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);

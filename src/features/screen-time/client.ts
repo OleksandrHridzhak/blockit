@@ -15,6 +15,7 @@ export interface ProtectionStatus {
   lastError?: string;
   supportsCustomSessions?: boolean;
   supportsShortSessions?: boolean;
+  supportsSecondSessions?: boolean;
   supportsMicrolearning?: boolean;
   supportsMicrolearningV2?: boolean;
 }
@@ -53,6 +54,7 @@ function requireNative(): NativeScreenTime {
 }
 async function customSessions(module: NativeScreenTime, minutes: number) {
   const status = await module.getStatus();
+  if (!Number.isInteger(minutes) && !status.supportsSecondSessions) throw new Error('Онови Blockit, щоб задавати тривалість доступу в секундах.');
   if (minutes < 15 && !status.supportsShortSessions) throw new Error('Онови Blockit, щоб встановити доступ менше 15 хвилин.');
   if (status.supportsCustomSessions) return true;
   if (minutes !== 15) throw new Error('Онови Blockit у TestFlight, щоб змінювати ліміт сесії.');

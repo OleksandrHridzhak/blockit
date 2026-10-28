@@ -1,13 +1,16 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { EditorialIcon } from './editorial-icon';
-import { appleTheme, ui } from './protection-ui';
+import { ui as sharedUI } from './protection-ui';
 import type { QuickActionRowProps } from './quick-action-row-props';
 
 let closeOpenRow: (() => void) | undefined;
 
 export function QuickActionRow({ children, name, status, suspended, disabled, onPause, onResume, onDisable, onDelete, onMore }: QuickActionRowProps) {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
   const swipe = useRef<SwipeableMethods>(null);
   const close = useCallback(() => swipe.current?.close(), []);
   const [openSide, setOpenSide] = useState<string>();

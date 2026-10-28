@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/features/appearance/theme';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Action, Copy, ListRow, ListSection, Page } from '@/components/protection-ui';
@@ -8,6 +9,7 @@ import { appCuriosityEnabled, setGroupCuriosity } from '@/features/curiosity/sto
 import { screenTime, type GroupMode, type SelectedApp } from '@/features/screen-time/client';
 
 export default function SelectedAppScreen() {
+  useAppTheme();
   const { appId } = useLocalSearchParams<{ appId: string }>();
   const [app, setApp] = useState<SelectedApp | null>(null);
   const [loaded, setLoaded] = useState(false);

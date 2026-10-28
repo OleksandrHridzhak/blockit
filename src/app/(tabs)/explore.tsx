@@ -1,3 +1,4 @@
+import { useThemeStyles, createThemeStyles, setThemePreference, useThemeSettings, type ThemePreference } from '@/features/appearance/theme';
 import { useEffect, useState } from 'react';
 import { router, type Href } from 'expo-router';
 import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +9,7 @@ import {
   ListSection,
   Page,
   SegmentedControl,
-  ui,
+  ui as sharedUI,
 } from '@/components/protection-ui';
 import { useProtection } from '@/hooks/use-protection';
 import { setGlobalSnooze } from '@/features/preview/store';
@@ -20,6 +21,10 @@ const SNOOZE_DURATIONS = [
 ];
 
 export default function SettingsScreen() {
+  const ui = useThemeStyles(sharedUI);
+  const styles = useThemeStyles(themeStyles);
+  const { preference } = useThemeSettings();
+  const themeOptions: ThemePreference[] = ['system', 'light', 'dark'];
   const { view, busy, run, refresh } = useProtection();
   const [selectedDurationIndex, setSelectedDurationIndex] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -79,6 +84,16 @@ export default function SettingsScreen() {
       <View style={styles.headerContainer}>
         <Text style={ui.largeTitle}>Параметри</Text>
       </View>
+
+      <ListSection title="ТЕМА" footer="Автоматична — як у налаштуваннях телефона.">
+        <View style={{ padding: 12 }}>
+          <SegmentedControl values={['Автоматична', 'Світла', 'Темна']}
+            selectedIndex={themeOptions.indexOf(preference)} onChange={index => {
+              try { setThemePreference(themeOptions[index]); }
+              catch { Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
+            }} />
+        </View>
+      </ListSection>
 
       {/* SNOOZE ALL SECTION */}
       <ListSection
@@ -261,13 +276,13 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 4,
     paddingTop: 8,
   },
   sectionSubtext: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.secondaryLabel,
   },
@@ -286,14 +301,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   snoozeActiveTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '600',
     color: appleTheme.orange,
     letterSpacing: -0.3,
   },
   snoozeActiveDetail: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     color: appleTheme.secondaryLabel,
     marginTop: 2,
@@ -312,7 +327,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   subTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '600',
     color: appleTheme.label,
@@ -325,14 +340,14 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   subStatusText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 10,
     fontWeight: '700',
     color: appleTheme.green,
     letterSpacing: 0.5,
   },
   subDetail: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     color: appleTheme.secondaryLabel,
     marginTop: 2,
@@ -344,24 +359,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rowLabel: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     color: appleTheme.label,
   },
   rowValue: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     color: appleTheme.secondaryLabel,
   },
   linkText: {
     flex: 1,
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '500',
     color: appleTheme.tint,
   },
   chevron: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 20,
     fontWeight: '400',
     color: appleTheme.secondaryLabel,
@@ -370,17 +385,17 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '90deg' }],
   },
   faqQuestion: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     fontWeight: '500',
     color: appleTheme.label,
     lineHeight: 20,
   },
   faqAnswer: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     lineHeight: 18,
     color: appleTheme.secondaryLabel,
     marginTop: 8,
   },
-});
+}));

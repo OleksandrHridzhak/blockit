@@ -1,25 +1,11 @@
+import { useThemeStyles, appleTheme, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export const appleTheme = {
-  bg: '#000000',                        // System Background (Black)
-  secondaryBg: '#1C1C1E',               // Secondary System Grouped Background
-  tertiaryBg: '#2C2C2E',                // Tertiary System Grouped Background / Fill
-  fill: '#3A3A3C',                      // System Fill
-  separator: 'rgba(84, 84, 88, 0.4)',   // System Separator
-  separatorSubtle: '#2C2C2E',
-  label: '#FFFFFF',                     // Primary Label
-  secondaryLabel: '#8E8E93',            // Secondary Label (System Gray)
-  tertiaryLabel: '#48484A',             // Tertiary Label
-  tint: '#0A84FF',                      // iOS System Blue
-  tintPressed: '#0071E3',
-  green: '#30D158',                     // iOS System Green
-  orange: '#FF9F0A',                    // iOS System Orange
-  red: '#FF453A',                       // iOS System Red
-} as const;
+export { appleTheme } from '@/features/appearance/theme';
 
-export const editorial = {
+export const editorial = createThemeStyles(() => ({
   bg: appleTheme.bg,
   card: appleTheme.secondaryBg,
   text: appleTheme.label,
@@ -28,10 +14,11 @@ export const editorial = {
   fill: appleTheme.label,
   line: appleTheme.separatorSubtle,
   soft: appleTheme.tertiaryBg,
-} as const;
+} as const));
 
 export function usePalette() {
-  return editorial;
+  useAppTheme();
+  return useThemeStyles(editorial);
 }
 
 export const systemFont = Platform.select({
@@ -41,6 +28,8 @@ export const systemFont = Platform.select({
 });
 
 export function Page({ children, footer, header }: PropsWithChildren<{ footer?: ReactNode; header?: ReactNode }>) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return (
     <SafeAreaView style={ui.screen} edges={['top', 'left', 'right']}>
       {header}
@@ -73,6 +62,8 @@ export function Copy({
   large?: boolean;
   secondary?: boolean;
 }>) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return (
     <Text
       accessibilityRole={title || large ? 'header' : undefined}
@@ -89,10 +80,14 @@ export function Copy({
 }
 
 export function Kicker({ children }: PropsWithChildren) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return <Text style={ui.sectionHeader}>{children}</Text>;
 }
 
 export function Card({ children }: PropsWithChildren) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return <View style={ui.card}>{children}</View>;
 }
 
@@ -104,6 +99,8 @@ export function ListSection({
   title?: string;
   footer?: string | ReactNode;
 }>) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return (
     <View style={ui.section}>
       {title && <Text style={ui.sectionHeader}>{title}</Text>}
@@ -120,6 +117,8 @@ export function ListSection({
 }
 
 export function ListGroup({ children }: PropsWithChildren) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return <View style={ui.group}>{children}</View>;
 }
 
@@ -133,6 +132,8 @@ export function ListRow({
   disabled?: boolean;
   showSeparator?: boolean;
 }>) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   const content = (
     <View style={ui.rowContent}>
       {children}
@@ -169,6 +170,7 @@ export function AppBadge({
   color?: string;
   size?: number;
 }) {
+  const appleTheme = useAppTheme();
   const bg = color || appleTheme.tertiaryBg;
   const initial = name ? name.trim().charAt(0).toUpperCase() : '?';
   return (
@@ -212,10 +214,12 @@ export function Action({
   selected?: boolean;
   destructive?: boolean;
 }) {
+  const ui = useThemeStyles(sharedUI);
+  const appleTheme = useAppTheme();
   const isPrimary = !secondary || selected;
 
   let backgroundColor: string = appleTheme.tint;
-  let textColor: string = '#FFFFFF';
+  let textColor: string = appleTheme.onTint;
 
   if (destructive) {
     backgroundColor = isPrimary ? appleTheme.red : appleTheme.secondaryBg;
@@ -259,6 +263,8 @@ export function Choice({
   onPress: () => void;
   showSeparator?: boolean;
 }) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return (
     <Pressable
       accessibilityRole="radio"
@@ -298,6 +304,8 @@ export function SegmentedControl({
   onChange: (index: number) => void;
   disabled?: boolean;
 }) {
+  const ui = useThemeStyles(sharedUI);
+  useAppTheme();
   return (
     <View style={ui.segmentedContainer}>
       {values.map((val, idx) => {
@@ -330,7 +338,7 @@ export function SegmentedControl({
   );
 }
 
-export const ui = StyleSheet.create({
+const sharedUI = createThemeStyles(() => StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: appleTheme.bg,
@@ -480,7 +488,7 @@ export const ui = StyleSheet.create({
     justifyContent: 'center',
   },
   checkSymbol: {
-    color: '#FFFFFF',
+    color: appleTheme.onTint,
     fontSize: 14,
     fontWeight: '700',
     marginTop: -1,
@@ -588,4 +596,6 @@ export const ui = StyleSheet.create({
     backgroundColor: appleTheme.secondaryBg,
     borderRadius: 8,
   },
-});
+}));
+
+export { sharedUI as ui };

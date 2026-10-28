@@ -1,12 +1,15 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { APP_CATALOG, getCatalogApp } from '@/core/catalog';
 import { getReturnTarget, setReturnTarget } from '@/features/intervention/return-target';
-import { ListRow, ListSection, appleTheme, ui } from './protection-ui';
+import { ListRow, ListSection, ui as sharedUI } from './protection-ui';
 
 export function ReturnAppSetting({ tokenId, disabled = false, onChange }: {
   tokenId: string; disabled?: boolean; onChange?: (target: string | null) => void;
 }) {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
   const [selected, setSelected] = useState(() => getReturnTarget(tokenId));
   const [expanded, setExpanded] = useState(false);
   const [error, setError] = useState('');

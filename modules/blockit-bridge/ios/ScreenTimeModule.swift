@@ -63,7 +63,7 @@ public class ScreenTimeModule: Module {
       let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self)
       return [
         "available": true,
-        "supportsCustomSessions": true, "supportsShortSessions": true,
+        "supportsCustomSessions": true, "supportsShortSessions": true, "supportsSecondSessions": true,
         "supportsMicrolearning": true,
         "supportsMicrolearningV2": true,
         "authorization": authorization == .approved ? "approved" : authorization == .denied ? "denied" : "notDetermined",
@@ -94,9 +94,9 @@ public class ScreenTimeModule: Module {
           .sorted { ($0["id"] as? String ?? "") < ($1["id"] as? String ?? "") }
       }
     }
-    AsyncFunction("saveAppRule") { (tokenID: String, seconds: Int, mode: String, sessionMinutes: Int?) throws in
+    AsyncFunction("saveAppRule") { (tokenID: String, seconds: Int, mode: String, sessionMinutes: Double?) throws in
       defer { ScreenTimeStore.stopUnusedMonitoring() }
-      guard (1...86400).contains(seconds), ["countdown", "reflection", "typing", "microlearning", "microlearning-v2"].contains(mode), (1...1440).contains(sessionMinutes ?? 15) else {
+      guard (1...86400).contains(seconds), ["countdown", "reflection", "typing", "microlearning", "microlearning-v2"].contains(mode), AccessWindow.isValidSessionMinutes(sessionMinutes ?? 15) else {
         throw ScreenTimeStore.Failure.answer
       }
       try ScreenTimeStore.transaction {
@@ -145,9 +145,9 @@ public class ScreenTimeModule: Module {
         }
       }
     }
-    AsyncFunction("saveGroup") { (id: String, name: String, seconds: Int, mode: String, sessionMinutes: Int?) throws in
+    AsyncFunction("saveGroup") { (id: String, name: String, seconds: Int, mode: String, sessionMinutes: Double?) throws in
       try self.validateGroup(id: id, name: name, seconds: seconds, mode: mode)
-      guard (1...1440).contains(sessionMinutes ?? 15) else { throw ScreenTimeStore.Failure.answer }
+      guard AccessWindow.isValidSessionMinutes(sessionMinutes ?? 15) else { throw ScreenTimeStore.Failure.answer }
       defer { ScreenTimeStore.stopUnusedMonitoring() }
       try ScreenTimeStore.transaction {
         guard var group = ScreenTimeStore.groups.first(where: { $0.id == id }) else { throw ScreenTimeStore.Failure.invalidRequest }
@@ -162,10 +162,10 @@ public class ScreenTimeModule: Module {
       defer { ScreenTimeStore.stopUnusedMonitoring() }
       try ScreenTimeStore.transaction { ScreenTimeStore.saveGroups(ScreenTimeStore.groups.filter { $0.id != id }) }
     }
-    AsyncFunction("pickGroupApps") { (id: String, name: String, seconds: Int, mode: String, sessionMinutes: Int?, promise: Promise) in
+    AsyncFunction("pickGroupApps") { (id: String, name: String, seconds: Int, mode: String, sessionMinutes: Double?, promise: Promise) in
       do {
         try self.validateGroup(id: id, name: name, seconds: seconds, mode: mode)
-        guard (1...1440).contains(sessionMinutes ?? 15) else { throw ScreenTimeStore.Failure.answer }
+        guard AccessWindow.isValidSessionMinutes(sessionMinutes ?? 15) else { throw ScreenTimeStore.Failure.answer }
         let tokens = try ScreenTimeStore.transaction { ScreenTimeStore.groups.first(where: { $0.id == id })?.tokens ?? [] }
         self.presentPicker(group: ScreenTimeStore.AppGroup(id: id, name: name.trimmingCharacters(in: .whitespacesAndNewlines), seconds: seconds, mode: mode, tokens: tokens, sessionMinutes: sessionMinutes ?? 15), promise: promise)
       } catch { promise.reject("INVALID_GROUP", error.localizedDescription) }
@@ -184,7 +184,7 @@ public class ScreenTimeModule: Module {
               grant.until > Date().timeIntervalSince1970 else { return nil }
         return ["id": grant.id, "readyAt": 0, "mode": "countdown",
           "appId": ScreenTimeStore.applicationID(grant.token),
-          "sessionMinutes": max(1, Int(ceil((grant.until - Date().timeIntervalSince1970) / 60)))]
+          "sessionMinutes": max(1, ceil(grant.until - Date().timeIntervalSince1970)) / 60]
       }
     }
     AsyncFunction("startMicrolearning") { (id: String) throws -> [String: Any] in
@@ -307,18 +307,29 @@ private struct BlockitAppLabelStyle: LabelStyle {
 
 private struct AppSelectionSheet: View {
   @State var selection: FamilyActivitySelection
+  @State private var pickerID = UUID()
   let onDone: (FamilyActivitySelection?) -> Void
   var body: some View {
     NavigationStack {
       FamilyActivityPicker(selection: $selection)
+        .id(pickerID)
         .navigationTitle("Обери застосунки")
         .toolbar {
           ToolbarItem(placement: .cancellationAction) { Button("Скасувати") { onDone(nil) } }
           ToolbarItem(placement: .confirmationAction) { Button("Зберегти") { onDone(selection) } }
         }
         .safeAreaInset(edge: .bottom) {
-          Text("Обирай окремі застосунки всередині категорій. Категорії та сайти не додаються.")
-            .font(.footnote).padding().background(.regularMaterial)
+          VStack(spacing: 8) {
+            Button {
+              pickerID = UUID()
+            } label: {
+              Label("Перезавантажити список", systemImage: "arrow.clockwise")
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            Text("Обирай окремі застосунки всередині категорій. Категорії та сайти не додаються.")
+              .font(.footnote)
+          }
+          .padding().background(.regularMaterial)
         }
     }
   }

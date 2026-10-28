@@ -1,12 +1,14 @@
+import { useThemeStyles, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { useEffect, useMemo, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Action, Page, appleTheme, ui } from '@/components/protection-ui';
+import { Action, Page, appleTheme, ui as sharedUI } from '@/components/protection-ui';
 import { useLearningSession } from './useLearningSession';
 import { ReturnAppSetting } from '@/components/return-app-setting';
 import { mechanicNames, type Lesson, type Option } from './content';
 import { pickLesson, readLearningProgress, saveLastLesson } from './selection';
 
 function MythCard({ lesson, onAnswer }: { lesson: Lesson; onAnswer: (option: Option) => void }) {
+  const styles = useThemeStyles(themeStyles);
   const pan = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
     onPanResponderRelease: (_, gesture) => {
@@ -23,6 +25,9 @@ function MythCard({ lesson, onAnswer }: { lesson: Lesson; onAnswer: (option: Opt
 }
 
 export default function MicrolearningScreen() {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
+  const styles = useThemeStyles(themeStyles);
   const { preview, busy, error, ready, finish, cancel, appId, setReturnTarget } = useLearningSession('microlearning');
   const [lesson, setLesson] = useState(() => {
     const progress = readLearningProgress();
@@ -74,7 +79,7 @@ export default function MicrolearningScreen() {
   </Page>;
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   brand: { color: appleTheme.label, fontWeight: '700', letterSpacing: 2, fontSize: 11 },
   close: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 4 }, link: { color: appleTheme.secondaryLabel, fontSize: 15 },
@@ -99,4 +104,4 @@ const styles = StyleSheet.create({
   source: { color: appleTheme.secondaryLabel, marginTop: 16, fontSize: 12, lineHeight: 18 },
   read: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 50 }, readText: { color: '#b7dc9a', fontSize: 16, fontWeight: '600' },
   next: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 48 }, nextText: { color: appleTheme.secondaryLabel, fontSize: 15 },
-});
+}));

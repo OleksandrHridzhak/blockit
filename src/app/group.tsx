@@ -1,7 +1,8 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, TextInput } from 'react-native';
-import { Action, Copy, ListRow, ListSection, Page, appleTheme, ui } from '@/components/protection-ui';
+import { Action, Copy, ListRow, ListSection, Page, ui as sharedUI } from '@/components/protection-ui';
 import { ProtectionRuleEditor } from '@/components/protection-rule-editor';
 import { FamilyAppLabel } from '@/components/family-app-label';
 import { EditorialIcon } from '@/components/editorial-icon';
@@ -11,6 +12,7 @@ import { type AppGroup, type GroupMode } from '@/features/screen-time/client';
 import { curiosityEnabled, setGroupCuriosity } from '@/features/curiosity/storage';
 
 export default function GroupScreen() {
+  useAppTheme();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [data, setData] = useState<Awaited<ReturnType<typeof groupsService.load>> | null>(null);
   const [error, setError] = useState('');
@@ -23,12 +25,16 @@ export default function GroupScreen() {
   if (!data) return <Page><Copy>{error || 'Завантажуємо групу…'}</Copy><Action secondary label="Назад" onPress={() => router.back()} /></Page>;
   const group = data.groups.find(group => group.id === id);
   if (id && !group) return <Page><Copy>Цю групу вже видалено.</Copy><Action label="До груп" onPress={() => router.replace('/')} /></Page>;
-  return <GroupEditor key={id ?? 'new'} initial={group} demo={data.demo} />;
+  let number = 1;
+  while (data.groups.some(item => item.name.trim().toLocaleLowerCase() === `група ${number}`)) number++;
+  return <GroupEditor key={id ?? 'new'} initial={group} demo={data.demo} defaultName={`Група ${number}`} />;
 }
-function GroupEditor({ initial, demo }: { initial?: AppGroup; demo: boolean }) {
+function GroupEditor({ initial, demo, defaultName }: { initial?: AppGroup; demo: boolean; defaultName: string }) {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
   const [group, setGroup] = useState<AppGroup>(() => initial ?? {
     id: `group-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    name: '', seconds: 20, mode: 'countdown', appIds: [],
+    name: defaultName, seconds: 20, mode: 'countdown', appIds: [],
   });
   return <ProtectionRuleEditor demo={demo} label={group.name.trim() || 'групи'}
     initial={{ ...(demo ? initial?.previewRule : undefined), seconds: initial?.seconds ?? 20,

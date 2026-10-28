@@ -1,3 +1,4 @@
+import { useThemeStyles, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -8,12 +9,14 @@ import {
   ListRow,
   ListSection,
   Page,
-  ui,
+  ui as sharedUI,
 } from '@/components/protection-ui';
 import { previewApps, readPreview, savePreview } from '@/features/preview/store';
 import { getCatalogApp } from '@/core/catalog';
 
 export default function SelectAppsScreen() {
+  const appleTheme = useAppTheme();
+  const styles = useThemeStyles(themeStyles);
   const [selected, setSelected] = useState<string[]>(() => readPreview().apps);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -149,7 +152,7 @@ export default function SelectAppsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   navBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -162,7 +165,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   navButtonText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 17,
     color: appleTheme.tint,
   },
@@ -170,7 +173,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   navTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 17,
     fontWeight: '600',
     color: appleTheme.label,
@@ -193,7 +196,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     color: appleTheme.label,
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     padding: 0,
   },
@@ -211,7 +214,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   appNameText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '500',
     color: appleTheme.label,
@@ -226,7 +229,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   checkSymbol: {
-    color: '#FFFFFF',
+    color: appleTheme.onTint,
     fontSize: 13,
     fontWeight: '700',
     marginTop: -1,
@@ -243,7 +246,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyStateText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     color: appleTheme.secondaryLabel,
   },
@@ -253,8 +256,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   errorText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.red,
   },
-});
+}));

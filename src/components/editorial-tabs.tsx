@@ -1,9 +1,11 @@
+import { useAppTheme } from '@/features/appearance/theme';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EditorialIcon } from '@/components/editorial-icon';
-import { appleTheme, systemFont } from '@/components/protection-ui';
+import { systemFont } from '@/components/protection-ui';
 
 export default function AppTabs() {
+  const appleTheme = useAppTheme();
   const insets = useSafeAreaInsets();
   return (
     <Tabs
@@ -19,7 +21,7 @@ export default function AppTabs() {
         tabBarActiveBackgroundColor: 'transparent',
         tabBarInactiveBackgroundColor: 'transparent',
         tabBarStyle: {
-          backgroundColor: '#121214',
+          backgroundColor: appleTheme.tabBar,
           borderTopColor: appleTheme.separatorSubtle,
           borderTopWidth: 0.5,
           height: 64 + insets.bottom,

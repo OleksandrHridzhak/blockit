@@ -3,6 +3,12 @@ import Foundation
 // Monitoring intervals and the actual access deadline are independent.
 struct AccessWindow: Codable {
   static let duration: TimeInterval = 15 * 60 + 5
+
+  static func isValidSessionMinutes(_ minutes: Double) -> Bool {
+    let seconds = minutes * 60
+    return seconds.isFinite && seconds >= 1 && seconds <= 86400
+      && abs(seconds - seconds.rounded()) < 0.000001
+  }
   let requestID: String
   let startsAt: TimeInterval
   let endsAt: TimeInterval
@@ -18,20 +24,20 @@ struct AccessWindow: Codable {
     mode == "microlearning" || mode == "microlearning-v2"
   }
 
-  init(requestID: String, readyAt: TimeInterval, now: TimeInterval, sessionMinutes: Int = 15) {
+  init(requestID: String, readyAt: TimeInterval, now: TimeInterval, sessionMinutes: Double = 15) {
     self.requestID = requestID
     // DeviceActivity date components have whole-second precision. Rounding down
     // could deliver the only start callback before our persisted deadline.
     startsAt = ceil(max(readyAt, now))
-    endsAt = startsAt + TimeInterval(max(1, min(1440, sessionMinutes)) * 60)
+    endsAt = startsAt + max(1, min(86400, (sessionMinutes * 60).rounded()))
   }
 
   // A host-confirmed grant starts a fresh, already-active monitoring interval.
   // It must not reuse the future interval registered by the shield extension.
-  init(activeRequestID: String, now: TimeInterval, sessionMinutes: Int) {
+  init(activeRequestID: String, now: TimeInterval, sessionMinutes: Double) {
     requestID = activeRequestID + ".active"
     startsAt = floor(now)
-    endsAt = startsAt + TimeInterval(max(1, min(1440, sessionMinutes)) * 60)
+    endsAt = startsAt + max(1, min(86400, (sessionMinutes * 60).rounded()))
   }
 
   var expiryMonitorID: String { requestID + ".expiry" }

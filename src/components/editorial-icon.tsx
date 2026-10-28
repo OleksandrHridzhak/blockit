@@ -1,4 +1,6 @@
+import { useAppTheme } from '@/features/appearance/theme';
 import { SymbolView } from 'expo-symbols';
+
 
 const icons = {
   shield: { light: 'shield', fill: 'shield.fill', material: 'shield' },
@@ -17,7 +19,8 @@ const icons = {
 export function EditorialIcon({ name, active = false, size = 24, color }: {
   name: keyof typeof icons; active?: boolean; size?: number; color?: string;
 }) {
+  const appleTheme = useAppTheme();
   const icon = icons[name];
   return <SymbolView name={{ ios: icon[active ? 'fill' : 'light'], android: icon.material, web: icon.material }}
-    tintColor={color ?? (active ? '#0A84FF' : '#8E8E93')} size={size} accessible={false} />;
+    tintColor={color ?? (active ? appleTheme.tint : appleTheme.secondaryLabel)} size={size} accessible={false} />;
 }

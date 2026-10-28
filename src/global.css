@@ -1,23 +1,30 @@
 :root {
-  color-scheme: dark;
-  background-color: #000000;
+  color-scheme: light dark;
+  --page-bg: #F2F2F7;
+  --page-text: #1C1C1E;
+  background-color: var(--page-bg);
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
   --font-rounded: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", system-ui, sans-serif;
   --font-serif: ui-serif, Georgia, serif;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) { --page-bg: #000000; --page-text: #FFFFFF; }
+}
+:root[data-theme='dark'] { color-scheme: dark; --page-bg: #000000; --page-text: #FFFFFF; }
+:root[data-theme='light'] { color-scheme: light; --page-bg: #F2F2F7; --page-text: #1C1C1E; }
 body {
-  background-color: #000000;
-  color: #FFFFFF;
+  background-color: var(--page-bg);
+  color: var(--page-text);
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 :focus-visible {
-  outline: 2px solid #0A84FF;
+  outline: 2px solid #46A758;
   outline-offset: 2px;
 }
 ::selection {
-  background: rgba(10, 132, 255, 0.35);
+  background: rgba(70, 167, 88, 0.35);
   color: #FFFFFF;
 }

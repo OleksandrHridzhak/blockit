@@ -1,3 +1,4 @@
+import { useThemeStyles, createThemeStyles } from '@/features/appearance/theme';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +9,7 @@ import {
   ListRow,
   ListSection,
   Page,
-  ui,
+  ui as sharedUI,
 } from '@/components/protection-ui';
 import { useProtection } from '@/hooks/use-protection';
 import {
@@ -30,6 +31,8 @@ import { QuickActionRow } from '@/components/quick-action-row';
 import { QuickActionsSheet, type QuickPanel } from '@/components/quick-actions-sheet';
 
 export default function HomeScreen() {
+  const ui = useThemeStyles(sharedUI);
+  const styles = useThemeStyles(themeStyles);
   const { view, busy, error, run, refresh } = useProtection();
   const [groups, setGroups] = useState<AppGroup[]>([]);
   const [groupError, setGroupError] = useState('');
@@ -308,7 +311,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 4,
     paddingTop: 8,
@@ -320,7 +323,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   snoozeBannerText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     fontWeight: '600',
     color: appleTheme.orange,
@@ -331,7 +334,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   mutedText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     color: appleTheme.secondaryLabel,
   },
@@ -351,7 +354,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   emptyTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 24,
     fontWeight: '700',
     letterSpacing: -0.4,
@@ -359,7 +362,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     lineHeight: 22,
     color: appleTheme.secondaryLabel,
@@ -367,20 +370,20 @@ const styles = StyleSheet.create({
     maxWidth: 380,
   },
   appNameText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '500',
     color: appleTheme.label,
     letterSpacing: -0.3,
   },
   appDetailText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     color: appleTheme.secondaryLabel,
     marginTop: 1,
   },
   chevron: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 20,
     fontWeight: '400',
     color: appleTheme.secondaryLabel,
@@ -389,12 +392,12 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(10, 132, 255, 0.15)',
+    backgroundColor: 'rgba(70, 167, 88, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   addAppLabel: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '500',
     color: appleTheme.tint,
@@ -406,8 +409,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   errorText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.red,
   },
-});
+}));

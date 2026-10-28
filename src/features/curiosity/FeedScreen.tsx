@@ -1,3 +1,4 @@
+import { useThemeStyles } from '@/features/appearance/theme';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { BackHandler, FlatList, Pressable, Text, View } from 'react-native';
@@ -5,9 +6,10 @@ import { Action } from '@/components/protection-ui';
 import { curiosityStories } from './content';
 import { readCuriosity, toggleSavedStory } from './storage';
 import { useCuriositySession } from './session';
-import { CuriosityShell, SmallButton, StoryImage, curiosityStyle as s } from './ui';
+import { CuriosityShell, SmallButton, StoryImage, curiosityStyle as sharedCuriosityStyles } from './ui';
 
 export default function CuriosityFeedScreen() {
+  const s = useThemeStyles(sharedCuriosityStyles);
   const session = useCuriositySession();
   const finish = session.finish;
   const [saved, setSaved] = useState<string[]>([]);

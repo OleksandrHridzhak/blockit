@@ -1,5 +1,6 @@
+import { useThemeStyles, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { sessionMinutesOr } from '@/core/session-duration';
+import { formatSessionDuration, sessionMinutesOr } from '@/core/session-duration';
 import { challengeCodeLength, challengeRounds, hasPauseTimer, PAUSE_PHRASE } from '@/core/pause-mode-settings';
 import { useEffect, useRef, useState } from 'react';
 import { ReturnAppSetting } from '@/components/return-app-setting';
@@ -19,7 +20,7 @@ import {
   Action,
   appleTheme,
   Page,
-  ui,
+  ui as sharedUI,
 } from '@/components/protection-ui';
 import {
   PauseMode,
@@ -37,6 +38,7 @@ const REASONS = [
 ];
 
 export default function PauseScreen() {
+  useAppTheme();
   const params = useLocalSearchParams<{
     preview?: string;
     request?: string;
@@ -99,6 +101,8 @@ function PauseSession({
   rounds: number;
   codeLength: number;
 }) {
+  const appleTheme = useAppTheme();
+  const styles = useThemeStyles(themeStyles);
   const [request, setRequest] = useState<PauseRequest | null>(() =>
     preview ? { id: 'preview', readyAt: Date.now() + (hasPauseTimer(mode) ? duration * 1000 : 0), mode } : null
   );
@@ -232,8 +236,8 @@ function PauseSession({
           </Text>
           <Text style={styles.sessionSubtitle}>
             {preview
-              ? `У реальній сесії доступ буде відкрито приблизно на ${sessionMinutes} хв, після чого пауза спрацює знову.`
-              : `Повернися до обраного застосунку. Доступ відкрито приблизно на ${accessMinutes} хвилин.`}
+              ? `У реальній сесії доступ буде відкрито приблизно на ${formatSessionDuration(sessionMinutes)}, після чого пауза спрацює знову.`
+              : `Повернися до обраного застосунку. Доступ відкрито приблизно на ${formatSessionDuration(accessMinutes)}.`}
           </Text>
           <View style={{ width: '100%', marginTop: 24 }}>
             {returnTarget && <Action label="Повернутися в застосунок" onPress={() => void openGuardedTargetApp(returnTarget)} />}
@@ -365,8 +369,8 @@ function PauseSession({
                     ? 'Введи перевірочний код'
                     : 'Спочатку виконай завдання'
                   : preview
-                  ? `Завершити тест (${sessionMinutes} хв доступу)`
-                  : `Надати доступ на ${accessMinutes} хв`
+                  ? `Завершити тест (${formatSessionDuration(sessionMinutes)} доступу)`
+                  : `Надати доступ на ${formatSessionDuration(accessMinutes)}`
               }
               disabled={busy || seconds > 0 || !valid}
               onPress={finish}
@@ -391,6 +395,7 @@ function PauseSession({
 }
 
 function BreathingExercise({ seconds }: { seconds: number }) {
+  const styles = useThemeStyles(themeStyles);
   const [scale] = useState(() => new Animated.Value(0.8));
   const [phase, setPhase] = useState<'inhale' | 'hold' | 'exhale'>('inhale');
 
@@ -489,6 +494,8 @@ function generateMathProblems(): MathProblem[] {
 }
 
 function MathChallenge({ count, onSolved }: { count: number; onSolved: (solved: boolean) => void }) {
+  const appleTheme = useAppTheme();
+  const styles = useThemeStyles(themeStyles);
   const [problems] = useState(() => Array.from({ length: count }, (_, index) => generateMathProblems()[index % 3]));
   const [index, setIndex] = useState(0);
   const [inputVal, setInputVal] = useState('');
@@ -591,6 +598,8 @@ function generatePasscode(length: number): string {
 }
 
 function PasscodeChallenge({ length, onSolved }: { length: number; onSolved: (solved: boolean) => void }) {
+  const appleTheme = useAppTheme();
+  const styles = useThemeStyles(themeStyles);
   const [targetCode] = useState(() => generatePasscode(length));
   const [inputVal, setInputVal] = useState('');
   const [solved, setSolved] = useState(false);
@@ -668,6 +677,8 @@ function generateStroopRounds(count: number): StroopItem[] {
 }
 
 function StroopChallenge({ count, onSolved }: { count: number; onSolved: (solved: boolean) => void }) {
+  const appleTheme = useAppTheme();
+  const styles = useThemeStyles(themeStyles);
   const [rounds] = useState(() => generateStroopRounds(count));
   const [roundIdx, setRoundIdx] = useState(0);
   const [isWrong, setIsWrong] = useState(false);
@@ -760,7 +771,7 @@ function StroopChallenge({ count, onSolved }: { count: number; onSolved: (solved
   );
 }
 
-const styles = StyleSheet.create({
+const themeStyles = createThemeStyles(() => StyleSheet.create({
   sessionContainer: {
     alignItems: 'center',
     gap: 16,
@@ -781,14 +792,14 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   kickerText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
     color: appleTheme.secondaryLabel,
   },
   appHeaderLabel: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 20,
     fontWeight: '600',
     color: appleTheme.label,
@@ -802,7 +813,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   timerDigits: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 88,
     lineHeight: 96,
     fontWeight: '200',
@@ -810,7 +821,7 @@ const styles = StyleSheet.create({
     color: appleTheme.label,
   },
   timerUnit: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     color: appleTheme.secondaryLabel,
   },
@@ -824,9 +835,9 @@ const styles = StyleSheet.create({
     width: 170,
     height: 170,
     borderRadius: 85,
-    backgroundColor: 'rgba(10, 132, 255, 0.16)',
+    backgroundColor: 'rgba(70, 167, 88, 0.16)',
     borderWidth: 1.5,
-    borderColor: 'rgba(10, 132, 255, 0.4)',
+    borderColor: 'rgba(70, 167, 88, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -834,19 +845,19 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(10, 132, 255, 0.25)',
+    backgroundColor: 'rgba(70, 167, 88, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   breathingDigits: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 44,
     fontWeight: '300',
     letterSpacing: -1,
-    color: '#FFFFFF',
+    color: appleTheme.label,
   },
   breathingPhaseText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 18,
     fontWeight: '500',
     color: appleTheme.tint,
@@ -860,13 +871,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   taskTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     fontWeight: '600',
     color: appleTheme.label,
   },
   taskDetail: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.secondaryLabel,
   },
@@ -888,13 +899,13 @@ const styles = StyleSheet.create({
     backgroundColor: appleTheme.tint,
   },
   reflectionPillText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     fontWeight: '500',
     color: appleTheme.label,
   },
   reflectionPillTextSelected: {
-    color: '#FFFFFF',
+    color: appleTheme.onTint,
     fontWeight: '600',
   },
   textInput: {
@@ -902,7 +913,7 @@ const styles = StyleSheet.create({
     backgroundColor: appleTheme.tertiaryBg,
     borderRadius: 10,
     color: appleTheme.label,
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 16,
     paddingHorizontal: 12,
   },
@@ -912,14 +923,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   sessionTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 24,
     fontWeight: '700',
     color: appleTheme.label,
     textAlign: 'center',
   },
   sessionSubtitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     lineHeight: 22,
     color: appleTheme.secondaryLabel,
@@ -942,7 +953,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   errorText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.red,
   },
@@ -959,14 +970,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   challengeKicker: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.8,
     color: appleTheme.tint,
   },
   challengeStepBadge: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 12,
     fontWeight: '600',
     color: appleTheme.secondaryLabel,
@@ -989,7 +1000,7 @@ const styles = StyleSheet.create({
     backgroundColor: appleTheme.green,
   },
   mathQuestion: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 32,
     fontWeight: '700',
     color: appleTheme.label,
@@ -1008,7 +1019,7 @@ const styles = StyleSheet.create({
     backgroundColor: appleTheme.tertiaryBg,
     borderRadius: 10,
     color: appleTheme.label,
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',
@@ -1030,13 +1041,13 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   mathSubmitBtnText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: appleTheme.onTint,
   },
   mathErrorText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 13,
     color: appleTheme.red,
     textAlign: 'center',
@@ -1046,26 +1057,26 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   challengeSuccessTitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 18,
     fontWeight: '700',
     color: appleTheme.label,
     textAlign: 'center',
   },
   challengeSuccessSubtitle: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.secondaryLabel,
     textAlign: 'center',
   },
   codeVerifiedBadge: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 12,
     fontWeight: '600',
     color: appleTheme.green,
   },
   challengeInstruction: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 14,
     color: appleTheme.secondaryLabel,
     lineHeight: 19,
@@ -1113,7 +1124,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   stroopWordText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 34,
     fontWeight: '800',
     letterSpacing: 2,
@@ -1144,9 +1155,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   stroopButtonText: {
-    fontFamily: ui.body.fontFamily,
+    fontFamily: sharedUI.body.fontFamily,
     fontSize: 15,
     fontWeight: '600',
     color: appleTheme.label,
   },
-});
+}));

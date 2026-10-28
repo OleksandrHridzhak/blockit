@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/branding/blockit-mascot-land-sky-v4.png",
     "scheme": "blockit",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/branding/blockit-mascot-land-sky-v4.png",
       "bundleIdentifier": "com.hridzhak.blockit.2WT689Y795",

@@ -1,4 +1,16 @@
-import { isSessionMinutes, parseSessionMinutes, sessionMinutesOr } from '../session-duration';
+import { formatSessionDuration, isSessionMinutes, parseSessionMinutes, sessionMinutesOr } from '../session-duration';
+
+it('preserves second-based access and displays whole seconds', () => {
+  for (const seconds of [1, 2, 30, 59, 61, 125, 86400]) {
+    expect(sessionMinutesOr(seconds / 60)).toBe(seconds / 60);
+  }
+  expect(isSessionMinutes(0)).toBe(false);
+  expect(isSessionMinutes(0.001)).toBe(false);
+  expect(isSessionMinutes(1440 + 1 / 60)).toBe(false);
+  expect(formatSessionDuration(0.5)).toBe('30 с');
+  expect(formatSessionDuration(1 / 60)).toBe('1 с');
+  expect(formatSessionDuration(2)).toBe('2 хв');
+});
 
 it('accepts custom whole-minute durations instead of a fixed list', () => {
   expect(parseSessionMinutes('7')).toBe(7);

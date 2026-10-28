@@ -1,7 +1,8 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Action, appleTheme, ListRow, ListSection, ui } from './protection-ui';
+import { Action, ListRow, ListSection, ui as sharedUI } from './protection-ui';
 import { parseSessionMinutes } from '@/core/session-duration';
 import type { QuickTarget } from '@/features/groups/quick-actions';
 
@@ -10,6 +11,8 @@ export type QuickPanel = { target: QuickTarget; mode: 'pause' | 'all' | 'delete'
 export function QuickActionsSheet({ panel, onClose, onApply, onRemove }: {
   panel: QuickPanel; onClose: () => void; onApply: (minutes: number) => Promise<void>; onRemove: () => Promise<void>;
 }) {
+  const appleTheme = useAppTheme();
+  const ui = useThemeStyles(sharedUI);
   const [text, setText] = useState('15');
   const [confirmDelete, setConfirmDelete] = useState(panel.mode === 'delete');
   const [busy, setBusy] = useState(false);

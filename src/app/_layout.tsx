@@ -1,5 +1,6 @@
+import { applyNativeAppearance, useAppTheme, useThemeSettings } from '@/features/appearance/theme';
 import '@/global.css';
-import { DarkTheme, router, Stack, ThemeProvider, usePathname, useRootNavigationState, type Href } from 'expo-router';
+import { DarkTheme, DefaultTheme, router, Stack, ThemeProvider, usePathname, useRootNavigationState, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
@@ -8,12 +9,22 @@ import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { screenTime } from '@/features/screen-time/client';
+
 import { interventionDestination } from '@/features/curiosity/storage';
 import { isMicrolearning, microlearningRoute } from '@/core/pause-mode-settings';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const appleTheme = useAppTheme();
+  const { scheme } = useThemeSettings();
+  const navigationTheme = scheme === 'dark' ? DarkTheme : DefaultTheme;
+  useEffect(() => {
+    applyNativeAppearance();
+  }, []);
+  useEffect(() => {
+    if (typeof document !== 'undefined') document.documentElement.dataset.theme = scheme;
+  }, [scheme]);
   const [fontsLoaded, fontError] = useFonts({
     Geist: require('@/assets/fonts/Geist-Regular.ttf'),
     GeistSemiBold: require('@/assets/fonts/Geist-SemiBold.ttf'),
@@ -47,8 +58,8 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}><ThemeProvider value={{ ...DarkTheme, colors: { ...DarkTheme.colors, background: '#000000', card: '#1C1C1E', text: '#FFFFFF', primary: '#0A84FF', border: '#2C2C2E' } }}>
-      <StatusBar style="light" />
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: appleTheme.bg }}><ThemeProvider value={{ ...navigationTheme, colors: { ...navigationTheme.colors, background: appleTheme.bg, card: appleTheme.secondaryBg, text: appleTheme.label, primary: appleTheme.tint, border: appleTheme.separatorSubtle } }}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="group" options={{ presentation: 'card', gestureEnabled: true }} />

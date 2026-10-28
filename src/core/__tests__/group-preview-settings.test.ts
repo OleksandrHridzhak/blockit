@@ -31,6 +31,15 @@ it('reopens a standalone app with an individually entered session duration', () 
   expect(getAppRule('instagram')).toMatchObject({ sessionMinutes: 37, escalating: true, mathRounds: 4, stroopRounds: 7, codeLength: 9 });
 });
 
+it('retains second-based access for standalone apps and groups after saving', async () => {
+  saveAppRule('instagram', { seconds: 20, mode: 'countdown', sessionMinutes: 1 / 60 });
+  expect(getAppRule('instagram').sessionMinutes).toBe(1 / 60);
+  const group: AppGroup = { id: 'seconds', name: 'Група 1', seconds: 20, mode: 'countdown', appIds: ['youtube'], sessionMinutes: 0.5,
+    previewRule: { seconds: 20, mode: 'countdown', sessionMinutes: 0.5 } };
+  await groupsService.save(group, true);
+  expect((await groupsService.load()).groups.find(item => item.id === 'seconds')).toEqual(group);
+});
+
 it('persists microlearning as a distinct mode for an app and a group', async () => {
   saveAppRule('instagram', { seconds: 30, mode: 'microlearning' });
   expect(getAppRule('instagram')).toMatchObject({ seconds: 30, mode: 'microlearning' });

@@ -1,3 +1,4 @@
+import { useThemeStyles, useAppTheme } from '@/features/appearance/theme';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentRef, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Animated, Linking, ScrollView, Text, View } from 'react-native';
@@ -5,9 +6,10 @@ import { Action } from '@/components/protection-ui';
 import { findCuriosityStory } from './content';
 import { readCuriosity, toggleSavedStory } from './storage';
 import { useCuriositySession } from './session';
-import { CuriosityShell, SmallButton, StoryImage, curiosityStyle as s } from './ui';
+import { CuriosityShell, SmallButton, StoryImage, curiosityStyle as sharedCuriosityStyles } from './ui';
 
 function Fade({ children, reduced }: PropsWithChildren<{ reduced: boolean }>) {
+  useAppTheme();
   const [opacity] = useState(() => new Animated.Value(1));
   useEffect(() => {
     if (reduced) return;
@@ -19,6 +21,7 @@ function Fade({ children, reduced }: PropsWithChildren<{ reduced: boolean }>) {
   return <Animated.View style={{ opacity, gap: 22 }}>{children}</Animated.View>;
 }
 export default function CuriosityStoryScreen() {
+  const s = useThemeStyles(sharedCuriosityStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const story = typeof id === 'string' ? findCuriosityStory(id) : undefined;
   const session = useCuriositySession();
