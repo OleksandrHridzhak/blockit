@@ -9,3 +9,4 @@ if (process.platform !== 'darwin') {
 const output = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'blockit-window-')), 'window-tests');
 execFileSync('xcrun', ['swiftc', 'modules/blockit-bridge/ios/AccessWindow.swift', 'modules/blockit-bridge/ios/PauseHistory.swift', 'scripts/swift-tests/main.swift', '-o', output], { stdio: 'inherit' });
 execFileSync(output, [], { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(__dirname, 'test-shield-action.cjs')], { stdio: 'inherit' });

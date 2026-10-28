@@ -356,8 +356,12 @@ enum ScreenTimeStore {
       event = DeviceActivityEvent(applications: [token], threshold: threshold)
     }
     do {
+      trace("monitor-register-start", id: window.requestID, detail: "expiry")
       try center.startMonitoring(expiry, during: schedule(for: window.expiryInterval))
+      trace("monitor-register-end", id: window.requestID, detail: "expiry")
+      trace("monitor-register-start", id: window.requestID, detail: "access")
       try center.startMonitoring(access, during: schedule(for: window.accessInterval), events: [.init("access-used"): event])
+      trace("monitor-register-end", id: window.requestID, detail: "access")
       try verify(access, interval: window.accessInterval)
       try verify(expiry, interval: window.expiryInterval)
       trace("scheduled", id: window.requestID, detail: "usageSeconds=\(window.usageSeconds)")
