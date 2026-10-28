@@ -297,10 +297,13 @@ enum ScreenTimeStore {
       if let grant = read("grant", Grant.self) { trace("expired-grant-reconciled", id: grant.id) }
       defaults.removeObject(forKey: "grant")
     }
-    settings.shield.applications = tokens.isEmpty ? nil : tokens
+    // Keep an existing shield stable while handling a button or a delayed
+    // monitor callback. Publish only an actual change to the guarded tokens.
+    let shielded: Set<ApplicationToken>? = tokens.isEmpty ? nil : tokens
+    if settings.shield.applications != shielded { settings.shield.applications = shielded }
     // Categories and websites are deliberately not supported in this release.
-    settings.shield.applicationCategories = nil
-    settings.shield.webDomains = nil
+    if settings.shield.applicationCategories != nil { settings.shield.applicationCategories = nil }
+    if settings.shield.webDomains != nil { settings.shield.webDomains = nil }
   }
   static func request(for token: ApplicationToken) throws -> Request {
     guard policy.enabled, selection.applicationTokens.contains(token), !suspendedTokens.contains(token) else { throw Failure.invalidRequest }

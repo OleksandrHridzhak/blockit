@@ -5,6 +5,12 @@ import Foundation
 final class ShieldActionExtension: ShieldActionDelegate {
   override func handle(action: ShieldAction, for application: ApplicationToken,
                        completionHandler: @escaping (ShieldActionResponse) -> Void) {
+    let startedAt = Date().timeIntervalSince1970
+    ScreenTimeStore.trace("shield-action", detail: action == .primaryButtonPressed ? "primary" : "secondary-or-other")
+    let respond: (ShieldActionResponse) -> Void = { response in
+      ScreenTimeStore.trace("shield-action-response", detail: "response=\(String(describing: response)) elapsedMs=\(Int((Date().timeIntervalSince1970 - startedAt) * 1000))")
+      completionHandler(response)
+    }
     guard action == .primaryButtonPressed else {
       if action == .secondaryButtonPressed { try? ScreenTimeStore.transaction {
         if let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self),
@@ -14,36 +20,43 @@ final class ShieldActionExtension: ShieldActionDelegate {
         ScreenTimeStore.clearRequest()
       } }
       ScreenTimeStore.stopUnusedMonitoring()
-      completionHandler(.close)
+      respond(.close)
       return
     }
     do {
       let alreadyOpen = try ScreenTimeStore.transaction { () -> Bool in
-        ScreenTimeStore.apply()
         guard let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self) else { return false }
-        return grant.token == application && grant.until > Date().timeIntervalSince1970
+        guard grant.token == application && grant.until > Date().timeIntervalSince1970 else { return false }
+        // Only reconcile a real active grant. Rewriting an unchanged shield
+        // while its primary button is handling a tap can replace that UI.
+        ScreenTimeStore.apply()
+        return true
       }
       if alreadyOpen {
-        completionHandler(.none)
+        respond(.none)
         return
       }
       let request = try ScreenTimeStore.transaction { try ScreenTimeStore.request(for: application) }
+      ScreenTimeStore.trace("shield-request", id: request.id, detail: "mode=\(request.mode)")
       if request.mode == "countdown" {
         // A manual recovery needs fresh active monitoring, just like finishing
         // in the host. Never reuse an unacknowledged future registration.
         if request.readyAt <= Date().timeIntervalSince1970 {
           try ScreenTimeStore.finish(id: request.id, answer: "")
-          completionHandler(.none)
+          respond(.none)
         } else {
+          ScreenTimeStore.trace("shield-schedule-start", id: request.id)
           _ = try ScreenTimeStore.scheduleCountdown(request)
-          finishAfterNotification(completionHandler) { callback in ScreenTimeStore.notify(request, completion: callback) }
+          ScreenTimeStore.trace("shield-schedule-end", id: request.id)
+          finishAfterNotification(respond) { callback in ScreenTimeStore.notify(request, completion: callback) }
         }
       } else {
-        finishAfterNotification(completionHandler) { callback in ScreenTimeStore.notify(request, completion: callback) }
+        finishAfterNotification(respond) { callback in ScreenTimeStore.notify(request, completion: callback) }
       }
     } catch {
       ScreenTimeStore.recordFailure(error)
-      finishAfterNotification(completionHandler) { callback in ScreenTimeStore.notifyFailure(completion: callback) }
+      ScreenTimeStore.trace("shield-action-error", detail: error.localizedDescription)
+      finishAfterNotification(respond) { callback in ScreenTimeStore.notifyFailure(completion: callback) }
     }
   }
 
