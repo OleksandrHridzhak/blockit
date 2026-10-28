@@ -15,6 +15,30 @@ final class ShieldActionExtension: ShieldActionDelegate {
     DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 1.5) {
       reply.send(.none, reason: "deadline")
     }
+    if ScreenTimeStore.shieldProbeEnabled {
+      reply.disableTrace()
+      // Separate queue: the probe must work even if a previous normal action
+      // is still stuck in a DeviceActivity call on the serial worker.
+      DispatchQueue.global(qos: .userInitiated).async {
+        if action == .secondaryButtonPressed { reply.send(.close, reason: "probe-secondary"); return }
+        guard action == .primaryButtonPressed, !reply.finished else { reply.send(.none, reason: "probe-unknown"); return }
+        let defaults = ScreenTimeStore.defaults
+        defaults.set(defaults.integer(forKey: "shieldProbeCount") + 1, forKey: "shieldProbeCount")
+        defaults.synchronize()
+        guard !reply.finished else { return }
+        if ScreenTimeStore.shieldProbeMode == "notification" {
+          let content = UNMutableNotificationContent()
+          content.title = "Тест кнопки Blockit"
+          content.body = "Натискання отримано. Таймер не запускався."
+          UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "blockit.probe", content: content, trigger: nil)) { _ in
+            reply.send(.defer, reason: "probe-notification")
+          }
+        } else {
+          reply.send(.defer, reason: "probe-screen")
+        }
+      }
+      return
+    }
     Self.worker.async {
       guard !reply.finished else { return }
       ScreenTimeStore.trace("shield-action", detail: action == .primaryButtonPressed ? "primary" : "secondary-or-other")
@@ -89,6 +113,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
   private final class ActionReply {
     private let lock = NSLock()
     private var callback: ((ShieldActionResponse) -> Void)?
+    private var traceEnabled = true
     private let startedAt = Date().timeIntervalSince1970
     init(_ callback: @escaping (ShieldActionResponse) -> Void) { self.callback = callback }
     var finished: Bool {
@@ -96,14 +121,18 @@ final class ShieldActionExtension: ShieldActionDelegate {
       defer { lock.unlock() }
       return callback == nil
     }
+    func disableTrace() { lock.lock(); traceEnabled = false; lock.unlock() }
     func send(_ response: ShieldActionResponse, reason: String) {
       lock.lock()
       guard let callback = callback else { lock.unlock(); return }
       self.callback = nil
+      let shouldTrace = traceEnabled
       lock.unlock()
       callback(response)
       // Best-effort logging AFTER the response; disk IO must not delay it.
-      ScreenTimeStore.trace("shield-action-response", detail: "response=\(String(describing: response)) reason=\(reason) elapsedMs=\(Int((Date().timeIntervalSince1970 - startedAt) * 1000))")
+      if shouldTrace {
+        ScreenTimeStore.trace("shield-action-response", detail: "response=\(String(describing: response)) reason=\(reason) elapsedMs=\(Int((Date().timeIntervalSince1970 - startedAt) * 1000))")
+      }
     }
   }
 }

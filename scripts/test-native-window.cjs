@@ -11,3 +11,4 @@ execFileSync('xcrun', ['swiftc', 'modules/blockit-bridge/ios/AccessWindow.swift'
 execFileSync(output, [], { stdio: 'inherit' });
 execFileSync(process.execPath, [path.join(__dirname, 'test-shield-action.cjs')], { stdio: 'inherit' });
 execFileSync(process.execPath, [path.join(__dirname, 'test-monitor-registration.cjs')], { stdio: 'inherit' });
+execFileSync(process.execPath, [path.join(__dirname, 'test-trace-writer.cjs')], { stdio: 'inherit' });

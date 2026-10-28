@@ -4,6 +4,10 @@ import UIKit
 
 final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
   override func configuration(shielding application: Application) -> ShieldConfiguration {
+    if ScreenTimeStore.shieldProbeEnabled {
+      let count = ScreenTimeStore.defaults.integer(forKey: "shieldProbeCount")
+      return makeConfiguration(subtitle: "Тестових натискань: \(count). Таймер не запускається, блокування залишається ввімкненим.", button: "Змінити текст", title: "Тест кнопки")
+    }
     let policy = application.token.map { ScreenTimeStore.rule(for: $0) }
       ?? ScreenTimeStore.AppRule(seconds: ScreenTimeStore.policy.seconds, mode: ScreenTimeStore.policy.mode)
     let request = ScreenTimeStore.pending
@@ -35,10 +39,13 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         : "Натисни кнопку, потім торкнися сповіщення Blockit, щоб перейти до завдання. Якщо сповіщення немає — відкрий Blockit вручну."
       button = policy.mode == "countdown" ? "Почати паузу" : "Перейти до завдання"
     }
-    return ShieldConfiguration(
+    return makeConfiguration(subtitle: subtitle, button: button)
+  }
+  private func makeConfiguration(subtitle: String, button: String, title: String = "Мить для себе") -> ShieldConfiguration {
+    ShieldConfiguration(
       backgroundBlurStyle: .systemUltraThinMaterialDark, backgroundColor: UIColor(white: 18.0 / 255.0, alpha: 1),
       icon: UIImage(systemName: "pause")?.withTintColor(UIColor(white: 250.0 / 255.0, alpha: 1), renderingMode: .alwaysOriginal),
-      title: .init(text: "Мить для себе", color: UIColor(white: 250.0 / 255.0, alpha: 1)),
+      title: .init(text: title, color: UIColor(white: 250.0 / 255.0, alpha: 1)),
       subtitle: .init(text: subtitle, color: UIColor(white: 142.0 / 255.0, alpha: 1)),
       primaryButtonLabel: .init(text: button, color: UIColor(white: 18.0 / 255.0, alpha: 1)),
       primaryButtonBackgroundColor: UIColor(white: 250.0 / 255.0, alpha: 1),

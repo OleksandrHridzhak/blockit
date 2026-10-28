@@ -8,6 +8,9 @@ import UIKit
 public class ScreenTimeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("BlockitScreenTime")
+    AsyncFunction("setShieldProbeMode") { (mode: String) throws in
+      try ScreenTimeStore.setShieldProbeMode(mode)
+    }
     AsyncFunction("getProtectionOverrides") { () throws -> [String: Double] in
       try ScreenTimeStore.transaction {
         ScreenTimeStore.apply()
@@ -29,6 +32,8 @@ public class ScreenTimeModule: Module {
       let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail, "process": $0.process ?? "unknown"] as [String: Any] }
       let data: [String: Any] = ["ios": UIDevice.current.systemVersion,
         "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+        "shieldProbeMode": ScreenTimeStore.shieldProbeMode,
+        "shieldProbeCount": ScreenTimeStore.defaults.integer(forKey: "shieldProbeCount"),
         "now": Date().timeIntervalSince1970, "grantUntil": grant?.until ?? 0,
         "grantMonitor": grant?.monitorID ?? grant?.id ?? "",
         "shieldedApps": ScreenTimeStore.settings.shield.applications?.count ?? 0,

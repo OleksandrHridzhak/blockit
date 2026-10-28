@@ -15,6 +15,25 @@ enum ScreenTimeStore {
   static let center = DeviceActivityCenter()
   static let sessionSeconds = AccessWindow.duration
   static let phrase = "Я обираю відкрити свідомо"
+  static var shieldProbeMode: String {
+    let mode = defaults.string(forKey: "shieldProbeMode") ?? "normal"
+    return ["screen", "notification"].contains(mode) ? mode : "normal"
+  }
+  static var shieldProbeEnabled: Bool { shieldProbeMode != "normal" }
+  static func setShieldProbeMode(_ mode: String) throws {
+    guard ["normal", "screen", "notification"].contains(mode) else { throw Failure.invalidRequest }
+    try transaction {
+      guard shieldProbeMode != mode else { return }
+      defaults.set(mode, forKey: "shieldProbeMode")
+      defaults.set(0, forKey: "shieldProbeCount")
+      clearRequest()
+      defaults.removeObject(forKey: "grant")
+      defaults.removeObject(forKey: "lastFailure")
+      apply()
+    }
+    // Do not call DeviceActivity while configuring this isolation test.
+    // Old callbacks cannot grant access after the pending request is cleared.
+  }
   // Separate atomic files intentionally avoid the state lock: they show whether
   // an extension callback arrived even if another process holds that lock.
   struct MonitorTrace: Codable {
@@ -24,18 +43,40 @@ enum ScreenTimeStore {
     let detail: String
     var process: String? = nil
   }
-  static func trace(_ event: String, id: String = "", detail: String = "") {
-    guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return }
-    let folder = root.appendingPathComponent("monitor-trace", isDirectory: true)
-    do {
+  // Fixed slots: a trace write must never enumerate/sort the accumulated log.
+  // This code runs inside small extension processes, including during a tap.
+  private final class TraceWriter {
+    private let folder: URL
+    private let process: String
+    private let lock = NSLock()
+    private var nextSlot = 0
+    init(folder: URL, process: String) throws {
+      self.folder = folder
+      self.process = process
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-      let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event, request: String(id.prefix(8)), detail: detail,
-        process: Bundle.main.bundleIdentifier ?? "unknown")
-      let name = String(format: "%.3f", value.timestamp) + "-" + UUID().uuidString + ".json"
-      try JSONEncoder().encode(value).write(to: folder.appendingPathComponent(name), options: .atomic)
-      let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).sorted { $0.lastPathComponent < $1.lastPathComponent }
-      for file in files.prefix(max(0, files.count - 100)) { try? FileManager.default.removeItem(at: file) }
-    } catch { /* Diagnostics must never interfere with protection. */ }
+    }
+    func write(_ event: String, id: String, detail: String) {
+      autoreleasepool {
+        lock.lock()
+        let slot = nextSlot
+        nextSlot = (nextSlot + 1) % 24
+        lock.unlock()
+        do {
+          let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event,
+            request: String(id.prefix(8)), detail: String(detail.prefix(512)), process: process)
+          let file = folder.appendingPathComponent("ring-\(process)-\(slot).json")
+          try JSONEncoder().encode(value).write(to: file, options: .atomic)
+        } catch { /* Best-effort diagnostics must not change protection. */ }
+      }
+    }
+  }
+  private static let traceWriter: TraceWriter? = autoreleasepool {
+    guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { return nil }
+    return try? TraceWriter(folder: root.appendingPathComponent("monitor-trace", isDirectory: true),
+      process: Bundle.main.bundleIdentifier ?? "unknown")
+  }
+  static func trace(_ event: String, id: String = "", detail: String = "") {
+    traceWriter?.write(event, id: id, detail: detail)
   }
   static func monitorTrace() -> [MonitorTrace] {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),
@@ -291,7 +332,7 @@ enum ScreenTimeStore {
     guard policy.enabled else { settings.clearAllSettings(); return }
     var tokens = selection.applicationTokens
     tokens.subtract(suspendedTokens)
-    if let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
+    if !shieldProbeEnabled, let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
       tokens.remove(grant.token)
     } else {
       if let grant = read("grant", Grant.self) { trace("expired-grant-reconciled", id: grant.id) }
@@ -306,7 +347,7 @@ enum ScreenTimeStore {
     if settings.shield.webDomains != nil { settings.shield.webDomains = nil }
   }
   static func request(for token: ApplicationToken) throws -> Request {
-    guard policy.enabled, selection.applicationTokens.contains(token), !suspendedTokens.contains(token) else { throw Failure.invalidRequest }
+    guard !shieldProbeEnabled, policy.enabled, selection.applicationTokens.contains(token), !suspendedTokens.contains(token) else { throw Failure.invalidRequest }
     if let existing = pending, existing.token == token { return existing }
     clearRequest()
     defaults.removeObject(forKey: "lastFailure")
@@ -416,7 +457,7 @@ enum ScreenTimeStore {
   @discardableResult
   static func activateCountdown(id: String) throws -> Bool {
     try transaction {
-      guard let scheduled = read("scheduledGrant", ScheduledGrant.self),
+      guard !shieldProbeEnabled, let scheduled = read("scheduledGrant", ScheduledGrant.self),
             scheduled.window.requestID == id,
             let request = pending, request.mode == "countdown",
             scheduled.window.canActivate(requestID: request.id, now: Date().timeIntervalSince1970),
@@ -483,7 +524,7 @@ enum ScreenTimeStore {
     }
   }
   private static func validateFinish(id: String, answer: String) throws -> Request {
-    guard AuthorizationCenter.shared.authorizationStatus == .approved,
+    guard !shieldProbeEnabled, AuthorizationCenter.shared.authorizationStatus == .approved,
           let request = pending, request.id == id,
           (!(request.mode == "countdown" || AccessWindow.isMicrolearning(request.mode)) || (request.readyAt > 0 && Date().timeIntervalSince1970 >= request.readyAt)) else { throw Failure.invalidRequest }
     switch request.mode {

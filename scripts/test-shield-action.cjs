@@ -13,7 +13,12 @@ const gate = source.slice(start, source.lastIndexOf('\n}')).replace('private fin
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'blockit-shield-action-'));
 const test = `import Foundation
 enum ShieldActionResponse { case none, close, \`defer\` }
-enum ScreenTimeStore { static func trace(_ event: String, detail: String) {} }
+enum ScreenTimeStore {
+  static let lock = NSLock()
+  static var messages: [String] = []
+  static func trace(_ event: String, detail: String) { lock.lock(); messages.append(detail); lock.unlock() }
+  static func contains(_ text: String) -> Bool { lock.lock(); defer { lock.unlock() }; return messages.contains { $0.contains(text) } }
+}
 ${gate}
 final class Result {
   let lock = NSLock()
@@ -39,6 +44,11 @@ let completed = ActionReply { normal.record($0) }
 completed.send(.defer, reason: "normal")
 completed.send(.none, reason: "late-deadline")
 assert(normal.values == [.defer], "A completed pause must ignore its later deadline")
+let probe = Result()
+let silent = ActionReply { probe.record($0) }
+silent.disableTrace()
+silent.send(.defer, reason: "probe-without-logger")
+assert(probe.values == [.defer] && !ScreenTimeStore.contains("probe-without-logger"), "Probe must answer without invoking the custom logger")
 print("PASS: actual shield reply implementation answers during blocked work and rejects concurrent/late replies")
 `;
 fs.writeFileSync(path.join(folder, 'main.swift'), test);
