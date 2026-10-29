@@ -5,6 +5,9 @@ import UIKit
 final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
   override func configuration(shielding application: Application) -> ShieldConfiguration {
     if ScreenTimeStore.shieldProbeEnabled {
+      if ScreenTimeStore.shieldProbeMode == "response" {
+        return makeConfiguration(subtitle: "Кнопка лише відповідає системі. Текст залишається незмінним, таймер не запускається.", button: "Перевірити відгук", title: "Тест без змін екрана")
+      }
       let count = ScreenTimeStore.defaults.integer(forKey: "shieldProbeCount")
       return makeConfiguration(subtitle: "Тестових натискань: \(count). Таймер не запускається, блокування залишається ввімкненим.", button: "Змінити текст", title: "Тест кнопки")
     }

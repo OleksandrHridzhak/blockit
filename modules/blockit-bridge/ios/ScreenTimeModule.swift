@@ -32,6 +32,7 @@ public class ScreenTimeModule: Module {
       let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail, "process": $0.process ?? "unknown"] as [String: Any] }
       let data: [String: Any] = ["ios": UIDevice.current.systemVersion,
         "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+        "supportsResponseProbe": true,
         "shieldProbeMode": ScreenTimeStore.shieldProbeMode,
         "shieldProbeCount": ScreenTimeStore.defaults.integer(forKey: "shieldProbeCount"),
         "now": Date().timeIntervalSince1970, "grantUntil": grant?.until ?? 0,

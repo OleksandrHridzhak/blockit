@@ -6,8 +6,8 @@ import { Action, ListRow, ListSection, Page, SegmentedControl, ui as sharedUI } 
 import { screenTime } from '@/features/screen-time/client';
 
 interface Trace { time: number; event: string; request: string; detail: string; process?: string }
-interface Diagnostics { build: string; ios: string; grantUntil: number; activities: unknown[]; trace: Trace[]; lastError?: string; shieldProbeMode?: 'normal' | 'screen' | 'notification'; shieldProbeCount?: number }
-const probeModes = ['normal', 'screen', 'notification'] as const;
+interface Diagnostics { build: string; ios: string; grantUntil: number; activities: unknown[]; trace: Trace[]; lastError?: string; supportsResponseProbe?: boolean; shieldProbeMode?: 'normal' | 'screen' | 'notification' | 'response'; shieldProbeCount?: number }
+const probeModes = ['normal', 'screen', 'notification', 'response'] as const;
 const eventNames: Record<string, string> = {
   'monitor-loaded': 'Системне розширення запущено',
   'schedule-readback': 'iOS повернула запланований інтервал',
@@ -57,11 +57,12 @@ export default function DiagnosticsScreen() {
       {value.shieldProbeMode !== undefined && <ListSection title="ТЕСТ КНОПКИ">
         <View style={{ padding: 16, gap: 12 }}>
           <SegmentedControl values={['Звичайна', 'Лише текст', '+ сповіщення']} selectedIndex={probeModes.indexOf(value.shieldProbeMode)} onChange={index => void changeProbe(index)} disabled={busy || switching} />
-          <Text style={ui.mutedText}>{value.shieldProbeMode === 'normal'
+          {value.supportsResponseProbe && <Action secondary label="Без змін екрана" selected={value.shieldProbeMode === 'response'} disabled={busy || switching} onPress={() => void changeProbe(3)} />}
+          <Text style={ui.mutedText}>{value.shieldProbeMode === 'response' ? 'Кнопка лише відповідає iOS. Текст і лічильник не змінюються; таймер і сповіщення не запускаються.' : value.shieldProbeMode === 'normal'
             ? 'Звичайна пауза з таймером.'
             : 'Тестова кнопка змінює текст блокування. Таймер не запускається, доступ залишається закритим.'}</Text>
           <Text style={ui.mutedText}>Зміна режиму завершує поточний доступ. Після тесту вибери «Звичайна», щоб повернути паузи.</Text>
-          {value.shieldProbeMode !== 'normal' && <Text style={ui.body}>Натискань у тесті: {value.shieldProbeCount ?? 0}</Text>}
+          {value.shieldProbeMode !== 'normal' && value.shieldProbeMode !== 'response' && <Text style={ui.body}>Натискань у тесті: {value.shieldProbeCount ?? 0}</Text>}
         </View>
       </ListSection>}
       <ListSection title="ОСТАННІ ПОДІЇ">

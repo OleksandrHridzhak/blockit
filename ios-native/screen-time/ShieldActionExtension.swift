@@ -15,18 +15,23 @@ final class ShieldActionExtension: ShieldActionDelegate {
     DispatchQueue.global(qos: .userInteractive).asyncAfter(deadline: .now() + 1.5) {
       reply.send(.none, reason: "deadline")
     }
-    if ScreenTimeStore.shieldProbeEnabled {
+    let probeMode = ScreenTimeStore.shieldProbeMode
+    if probeMode != "normal" {
       reply.disableTrace()
       // Separate queue: the probe must work even if a previous normal action
       // is still stuck in a DeviceActivity call on the serial worker.
       DispatchQueue.global(qos: .userInitiated).async {
         if action == .secondaryButtonPressed { reply.send(.close, reason: "probe-secondary"); return }
         guard action == .primaryButtonPressed, !reply.finished else { reply.send(.none, reason: "probe-unknown"); return }
+        // Isolate the system response from persistence, notifications and redraw.
+        if probeMode == "response" {
+          reply.send(.none, reason: "probe-response")
+          return
+        }
         let defaults = ScreenTimeStore.defaults
         defaults.set(defaults.integer(forKey: "shieldProbeCount") + 1, forKey: "shieldProbeCount")
-        defaults.synchronize()
         guard !reply.finished else { return }
-        if ScreenTimeStore.shieldProbeMode == "notification" {
+        if probeMode == "notification" {
           let content = UNMutableNotificationContent()
           content.title = "Тест кнопки Blockit"
           content.body = "Натискання отримано. Таймер не запускався."

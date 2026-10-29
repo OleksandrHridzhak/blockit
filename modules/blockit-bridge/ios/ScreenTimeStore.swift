@@ -17,11 +17,11 @@ enum ScreenTimeStore {
   static let phrase = "Я обираю відкрити свідомо"
   static var shieldProbeMode: String {
     let mode = defaults.string(forKey: "shieldProbeMode") ?? "normal"
-    return ["screen", "notification"].contains(mode) ? mode : "normal"
+    return ["screen", "notification", "response"].contains(mode) ? mode : "normal"
   }
   static var shieldProbeEnabled: Bool { shieldProbeMode != "normal" }
   static func setShieldProbeMode(_ mode: String) throws {
-    guard ["normal", "screen", "notification"].contains(mode) else { throw Failure.invalidRequest }
+    guard ["normal", "screen", "notification", "response"].contains(mode) else { throw Failure.invalidRequest }
     try transaction {
       guard shieldProbeMode != mode else { return }
       defaults.set(mode, forKey: "shieldProbeMode")

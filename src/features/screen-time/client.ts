@@ -29,7 +29,7 @@ interface NativeScreenTime {
   savePolicy(enabled: boolean, seconds: number, mode: PauseMode): Promise<void>;
   pickApps(): Promise<boolean>; getPending(): Promise<PauseRequest | null>;
   getDiagnostics?(): Promise<string>;
-  setShieldProbeMode?(mode: 'normal' | 'screen' | 'notification'): Promise<void>;
+  setShieldProbeMode?(mode: 'normal' | 'screen' | 'notification' | 'response'): Promise<void>;
   getActiveAccess?(): Promise<PauseRequest | null>;
   finish(id: string, answer: string): Promise<void>;
   startMicrolearning?(id: string): Promise<PauseRequest>;
@@ -107,7 +107,7 @@ export const screenTime = {
   pending: () => native?.getPending() ?? Promise.resolve(null),
   activeAccess: () => native?.getActiveAccess?.() ?? Promise.resolve(null),
   diagnostics: () => native?.getDiagnostics?.() ?? Promise.reject(new Error('Діагностика доступна в новій iOS-збірці Blockit.')),
-  setShieldProbeMode: (mode: 'normal' | 'screen' | 'notification') => native?.setShieldProbeMode?.(mode)
+  setShieldProbeMode: (mode: 'normal' | 'screen' | 'notification' | 'response') => native?.setShieldProbeMode?.(mode)
     ?? Promise.reject(new Error('Для тесту кнопки потрібна нова iOS-збірка Blockit.')),
   startMicrolearning: (id: string) => {
     const module = requireNative();

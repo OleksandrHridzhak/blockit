@@ -10,6 +10,10 @@ const source = fs.readFileSync(path.join(__dirname, '../ios-native/screen-time/S
 const start = source.indexOf('  private final class ActionReply {');
 if (start < 0) throw Error('ActionReply implementation missing');
 const gate = source.slice(start, source.lastIndexOf('\n}')).replace('private final class', 'final class');
+const probeStart = source.indexOf('        if probeMode == "response" {');
+const probeEnd = source.indexOf('        let defaults = ScreenTimeStore.defaults', probeStart);
+if (probeStart < 0 || probeEnd < 0) throw Error('Response-only probe branch missing');
+const responseProbe = source.slice(probeStart, probeEnd);
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'blockit-shield-action-'));
 const test = `import Foundation
 enum ShieldActionResponse { case none, close, \`defer\` }
@@ -50,6 +54,20 @@ silent.disableTrace()
 silent.send(.defer, reason: "probe-without-logger")
 assert(probe.values == [.defer] && !ScreenTimeStore.contains("probe-without-logger"), "Probe must answer without invoking the custom logger")
 print("PASS: actual shield reply implementation answers during blocked work and rejects concurrent/late replies")
+var persistenceWrites = 0
+func probeRoute(_ probeMode: String, _ reply: ActionReply) {
+${responseProbe}
+  persistenceWrites += 1
+}
+let responseOnlyResult = Result()
+let responseOnly = ActionReply { responseOnlyResult.record($0) }
+responseOnly.disableTrace()
+probeRoute("response", responseOnly)
+assert(responseOnlyResult.values == [.none] && persistenceWrites == 0, "Response-only probe must bypass redraw and preferences writes")
+let otherProbe = ActionReply { _ in }
+probeRoute("screen", otherProbe)
+assert(persistenceWrites == 1, "Existing text probe must retain its counter path")
+print("PASS: actual response-only probe bypasses persistence and returns none")
 `;
 fs.writeFileSync(path.join(folder, 'main.swift'), test);
 const binary = path.join(folder, 'shield-action-tests');
