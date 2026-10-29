@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 
 const KEY = 'blockit.curiosity.v1';
@@ -21,7 +22,7 @@ export function readCuriosity(): CuriosityPreferences {
     const raw = Platform.OS === 'web' && typeof localStorage !== 'undefined'
       ? localStorage.getItem(KEY) : BlockitBridge.getString(KEY);
     return raw ? normalizeCuriosity(JSON.parse(raw)) : empty();
-  } catch { return empty(); }
+  } catch (error) { diagnosticJournal.record('curiosity-read-error', { error }, 'error'); return empty(); }
 }
 function write(next: CuriosityPreferences) {
   const raw = JSON.stringify(next);
@@ -49,5 +50,6 @@ export function appCuriosityEnabled(appId: string, groupId?: string): boolean {
   return Object.hasOwn(settings.groups, key) ? settings.groups[key] : curiosityEnabled(groupId);
 }
 export function interventionDestination(groupId?: string, appId?: string): '/curiosity' | '/intervene' {
-  try { return (groupId && groupId !== 'legacy' ? curiosityEnabled(groupId) : appId ? appCuriosityEnabled(appId, groupId) : curiosityEnabled(groupId)) ? '/curiosity' : '/intervene'; } catch { return '/intervene'; }
+  try { return (groupId && groupId !== 'legacy' ? curiosityEnabled(groupId) : appId ? appCuriosityEnabled(appId, groupId) : curiosityEnabled(groupId)) ? '/curiosity' : '/intervene'; }
+  catch (error) { diagnosticJournal.record('curiosity-route-error', { error }, 'error'); return '/intervene'; }
 }

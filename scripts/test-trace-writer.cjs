@@ -15,8 +15,11 @@ const implementation = source.slice(record, end).replace('private final class Tr
 const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'blockit-trace-writer-'));
 const program = `import Foundation
 enum ScreenTimeStore {
+  static let suite = "blockit.trace.tests." + UUID().uuidString
+  static let defaults = UserDefaults(suiteName: suite)!
 ${implementation}
 }
+defer { ScreenTimeStore.defaults.removePersistentDomain(forName: ScreenTimeStore.suite) }
 let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: folder) }
@@ -26,17 +29,25 @@ let first = try ScreenTimeStore.TraceWriter(folder: folder, process: "action")
 for i in 0..<500 { first.write("event-\\(i)", id: "12345678abcdef", detail: String(repeating: "x", count: 2000)) }
 DispatchQueue.concurrentPerform(iterations: 100) { i in first.write("race-\\(i)", id: "12345678abcdef", detail: "ok") }
 let second = try ScreenTimeStore.TraceWriter(folder: folder, process: "monitor")
-for i in 0..<100 { second.write("other-\\(i)", id: "abcdefghijk", detail: "ok") }
+for i in 0..<600 { second.write("other-\\(i)", id: "abcdefghijk", detail: "ok") }
+// A relaunched process continues the persisted ring instead of rewriting slot zero.
+let previousSlot = ScreenTimeStore.defaults.integer(forKey: "traceSlot.action")
+let restarted = try ScreenTimeStore.TraceWriter(folder: folder, process: "action")
+restarted.write("after-restart", id: "12345678abcdef", detail: "recovered")
+let resumed = try JSONDecoder().decode(ScreenTimeStore.MonitorTrace.self,
+  from: Data(contentsOf: folder.appendingPathComponent("ring-action-\\(previousSlot).json")))
+assert(resumed.event == "after-restart" && resumed.sequence == 1 && resumed.run != nil)
 let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-assert(files.count == 148, "Repeated/concurrent writes must use 24 slots per process and preserve legacy files")
+assert(files.count == 1124, "Repeated/concurrent writes must use 512 slots per process and preserve legacy files")
 let records = files.filter { $0.lastPathComponent.hasPrefix("ring-") }
-assert(records.count == 48)
+assert(records.count == 1024)
 for file in records {
   let value = try JSONDecoder().decode(ScreenTimeStore.MonitorTrace.self, from: Data(contentsOf: file))
-  assert(value.request.count == 8 && value.detail.count <= 512)
+  assert(value.request == (value.process == "action" ? "12345678abcdef" : "abcdefghijk") && value.detail.count <= 2048)
+  assert(value.run != nil && value.sequence != nil && value.build != nil)
   assert(value.process == "action" || value.process == "monitor")
 }
-print("PASS: actual trace writer stays bounded across 700 writes, concurrent callers, legacy history and separate processes")
+print("PASS: actual trace writer stays bounded across concurrent callers, restarts, legacy history and separate processes")
 `;
 fs.writeFileSync(path.join(folder, 'main.swift'), program);
 const binary = path.join(folder, 'trace-writer-tests');

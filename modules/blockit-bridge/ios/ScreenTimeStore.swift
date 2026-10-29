@@ -42,6 +42,9 @@ enum ScreenTimeStore {
     let request: String
     let detail: String
     var process: String? = nil
+    var run: String? = nil
+    var sequence: Int? = nil
+    var build: String? = nil
   }
   // Fixed slots: a trace write must never enumerate/sort the accumulated log.
   // This code runs inside small extension processes, including during a tap.
@@ -49,23 +52,31 @@ enum ScreenTimeStore {
     private let folder: URL
     private let process: String
     private let lock = NSLock()
-    private var nextSlot = 0
+    private let run = UUID().uuidString
+    private let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    private var nextSlot: Int
+    private var sequence = 0
+    private let slots = 512
     init(folder: URL, process: String) throws {
       self.folder = folder
       self.process = process
+      self.nextSlot = ScreenTimeStore.defaults.integer(forKey: "traceSlot.\(process)") % 512
       try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
     func write(_ event: String, id: String, detail: String) {
       autoreleasepool {
         lock.lock()
+        defer { lock.unlock() }
         let slot = nextSlot
-        nextSlot = (nextSlot + 1) % 24
-        lock.unlock()
+        nextSlot = (nextSlot + 1) % slots
+        sequence += 1
         do {
           let value = MonitorTrace(timestamp: Date().timeIntervalSince1970, event: event,
-            request: String(id.prefix(8)), detail: String(detail.prefix(512)), process: process)
+            request: String(id.prefix(128)), detail: String(detail.prefix(2048)), process: process,
+            run: run, sequence: sequence, build: build)
           let file = folder.appendingPathComponent("ring-\(process)-\(slot).json")
           try JSONEncoder().encode(value).write(to: file, options: .atomic)
+          ScreenTimeStore.defaults.set(nextSlot, forKey: "traceSlot.\(process)")
         } catch { /* Best-effort diagnostics must not change protection. */ }
       }
     }
@@ -76,7 +87,17 @@ enum ScreenTimeStore {
       process: Bundle.main.bundleIdentifier ?? "unknown")
   }
   static func trace(_ event: String, id: String = "", detail: String = "") {
+    guard defaults.object(forKey: "diagnosticsEnabled") as? Bool != false else { return }
     traceWriter?.write(event, id: id, detail: detail)
+  }
+  static func clearDiagnosticTrace() throws {
+    guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else { throw Failure.sharedStore }
+    let folder = root.appendingPathComponent("monitor-trace", isDirectory: true)
+    guard FileManager.default.fileExists(atPath: folder.path) else { return }
+    for file in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+      where file.pathExtension == "json" {
+      try FileManager.default.removeItem(at: file)
+    }
   }
   static func monitorTrace() -> [MonitorTrace] {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),
@@ -84,23 +105,28 @@ enum ScreenTimeStore {
     return files.compactMap { file in
       guard let data = try? Data(contentsOf: file) else { return nil }
       return try? JSONDecoder().decode(MonitorTrace.self, from: data)
-    }.sorted { $0.timestamp > $1.timestamp }.prefix(60).map { $0 }
+    }.sorted { $0.timestamp > $1.timestamp }.prefix(2048).map { $0 }
   }
   // Host and extensions are separate processes. Serialize read-modify-write
   // transactions with an App Group file lock rather than a process-local queue.
   static func transaction<T>(_ body: () throws -> T) throws -> T {
     guard let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) else {
+      trace("state-lock-error", detail: "app-group-unavailable")
       throw Failure.sharedStore
     }
     let descriptor = open(container.appendingPathComponent("state.lock").path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-    guard descriptor >= 0 else { throw Failure.sharedStore }
+    guard descriptor >= 0 else { trace("state-lock-error", detail: "open errno=\(errno)"); throw Failure.sharedStore }
     defer { close(descriptor) }
-    guard flock(descriptor, LOCK_EX) == 0 else { throw Failure.sharedStore }
+    let started = Date().timeIntervalSince1970
+    guard flock(descriptor, LOCK_EX) == 0 else { trace("state-lock-error", detail: "flock errno=\(errno)"); throw Failure.sharedStore }
+    let waited = Date().timeIntervalSince1970 - started
+    if waited > 0.1 { trace("state-lock-slow", detail: "waitMs=\(Int(waited * 1000))") }
     defer { flock(descriptor, LOCK_UN) }
     // Flush/refresh CFPreferences at the process boundary while holding the lock.
     defaults.synchronize()
     defer { defaults.synchronize() }
-    return try body()
+    do { return try body() }
+    catch { trace("state-transaction-error", detail: String(reflecting: error)); throw error }
   }
   struct Policy: Codable {
     var enabled = true
@@ -209,8 +235,9 @@ enum ScreenTimeStore {
     }
   }
   static func recordFailure(_ error: Error) {
+    let nativeError = error as NSError
+    trace("native-error", detail: "\(nativeError.domain):\(nativeError.code) \(nativeError.localizedDescription)")
     try? transaction {
-      let nativeError = error as NSError
       write("lastFailure", LastFailure(
         message: "Не вдалося надати доступ. Відкрий Blockit і спробуй ще раз.",
         detail: "\(nativeError.domain):\(nativeError.code) \(nativeError.localizedDescription)"))
@@ -218,11 +245,12 @@ enum ScreenTimeStore {
   }
   static func read<T: Decodable>(_ key: String, _ type: T.Type) -> T? {
     guard let data = defaults.data(forKey: key) else { return nil }
-    return try? JSONDecoder().decode(type, from: data)
+    do { return try JSONDecoder().decode(type, from: data) }
+    catch { trace("storage-decode-error", detail: "key=\(key) error=\(String(reflecting: error))"); return nil }
   }
   static func write<T: Encodable>(_ key: String, _ value: T) {
-    guard let data = try? JSONEncoder().encode(value) else { return }
-    defaults.set(data, forKey: key)
+    do { defaults.set(try JSONEncoder().encode(value), forKey: key) }
+    catch { trace("storage-encode-error", detail: "key=\(key) error=\(String(reflecting: error))") }
   }
   static var policy: Policy { read("policy", Policy.self) ?? Policy() }
   static var selection: FamilyActivitySelection {
@@ -291,12 +319,14 @@ enum ScreenTimeStore {
     return request
   }
   static func clearRequest() {
+    if let request = read("request", Request.self) { trace("request-cleared", id: request.id) }
     defaults.removeObject(forKey: "request")
     defaults.removeObject(forKey: "scheduledGrant")
     UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["blockit.request"])
     UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["blockit.request"])
   }
   static func resetAccess() {
+    trace("access-reset")
     // Re-shield before cancelling the expiry callback.
     defaults.removeObject(forKey: "grant")
     defaults.removeObject(forKey: "lastFailure")
@@ -322,14 +352,20 @@ enum ScreenTimeStore {
       return ids
     }) else { return }
     let unused = activities.filter { !keep.contains($0.rawValue) }
-    if !unused.isEmpty { center.stopMonitoring(unused) }
+    if !unused.isEmpty {
+      trace("monitors-stop", detail: unused.map { $0.rawValue }.joined(separator: ","))
+      center.stopMonitoring(unused)
+    }
   }
   static func apply() {
     let overrides = protectionOverrides.filter {
       ($0.value.until == 0 || $0.value.until > Date().timeIntervalSince1970) && !overrideTokens($0.key).isEmpty
     }
     write("protectionOverrides", overrides)
-    guard policy.enabled else { settings.clearAllSettings(); return }
+    guard policy.enabled else {
+      if settings.shield.applications != nil { trace("shield-cleared", detail: "policy-disabled") }
+      settings.clearAllSettings(); return
+    }
     var tokens = selection.applicationTokens
     tokens.subtract(suspendedTokens)
     if !shieldProbeEnabled, let grant = read("grant", Grant.self), grant.until > Date().timeIntervalSince1970 {
@@ -341,7 +377,11 @@ enum ScreenTimeStore {
     // Keep an existing shield stable while handling a button or a delayed
     // monitor callback. Publish only an actual change to the guarded tokens.
     let shielded: Set<ApplicationToken>? = tokens.isEmpty ? nil : tokens
-    if settings.shield.applications != shielded { settings.shield.applications = shielded }
+    if settings.shield.applications != shielded {
+      trace("shield-changing", detail: "before=\(settings.shield.applications?.count ?? 0) after=\(tokens.count)")
+      settings.shield.applications = shielded
+      trace("shield-changed", detail: "readback=\(settings.shield.applications?.count ?? 0)")
+    }
     // Categories and websites are deliberately not supported in this release.
     if settings.shield.applicationCategories != nil { settings.shield.applicationCategories = nil }
     if settings.shield.webDomains != nil { settings.shield.webDomains = nil }
@@ -359,6 +399,7 @@ enum ScreenTimeStore {
                           groupID: source?.id, groupName: source?.name, sessionMinutes: appRule.sessionMinutes,
                           learningSeconds: AccessWindow.isMicrolearning(appRule.mode) ? appRule.seconds : nil)
     write("request", request)
+    trace("request-created", id: request.id, detail: "mode=\(request.mode) pause=\(appRule.seconds) sessionMinutes=\(request.sessionMinutes ?? 15) readyAt=\(request.readyAt)")
     record(request, outcome: "intervened")
     return request
   }
@@ -483,7 +524,10 @@ enum ScreenTimeStore {
     // Stable identifier replaces duplicates; notification delivery is never the timer.
     UNUserNotificationCenter.current().add(
       UNNotificationRequest(identifier: "blockit.request", content: content, trigger: nil),
-      withCompletionHandler: completion)
+      withCompletionHandler: { error in
+        trace("notification-submit", id: request.id, detail: error.map { String(reflecting: $0) } ?? "accepted")
+        completion(error)
+      })
   }
   static func notifyFailure(completion: @escaping (Error?) -> Void) {
     let content = UNMutableNotificationContent()
@@ -491,7 +535,10 @@ enum ScreenTimeStore {
     content.body = "Не вдалося запланувати доступ. Відкрий Blockit і спробуй ще раз."
     UNUserNotificationCenter.current().add(
       UNNotificationRequest(identifier: "blockit.request", content: content, trigger: nil),
-      withCompletionHandler: completion)
+      withCompletionHandler: { error in
+        trace("failure-notification-submit", detail: error.map { String(reflecting: $0) } ?? "accepted")
+        completion(error)
+      })
   }
   static func finish(id: String, answer: String, trackUsage: Bool = false) throws {
     defer { stopUnusedMonitoring() }

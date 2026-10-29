@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { getCatalogApp } from '@/core/catalog';
 import { screenTime } from '@/features/screen-time/client';
@@ -12,7 +13,7 @@ function readTargets(): Record<string, string> {
     const value: unknown = raw ? JSON.parse(raw) : null;
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value).filter(([id, target]) => id.length > 0 && typeof target === 'string' && getCatalogApp(target)));
-  } catch { return {}; }
+  } catch (error) { diagnosticJournal.record('return-target-read-error', { error }, 'error'); return {}; }
 }
 export function getReturnTarget(tokenId: string | undefined): string | null {
   return tokenId ? readTargets()[tokenId] ?? null : null;

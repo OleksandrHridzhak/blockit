@@ -8,6 +8,34 @@ import UIKit
 public class ScreenTimeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("BlockitScreenTime")
+    OnCreate { ScreenTimeStore.trace("host-module-loaded") }
+    OnDestroy { ScreenTimeStore.trace("host-module-destroyed") }
+    AsyncFunction("setDiagnosticCapture") { (enabled: Bool) in
+      ScreenTimeStore.defaults.set(enabled, forKey: "diagnosticsEnabled")
+    }
+    AsyncFunction("clearDiagnosticTrace") { () throws in
+      try ScreenTimeStore.clearDiagnosticTrace()
+    }
+    AsyncFunction("shareDiagnosticFile") { (report: String, promise: Promise) in
+      guard let presenter = self.appContext?.utilities?.currentViewController(), presenter.presentedViewController == nil else {
+        promise.reject("SHARE_BUSY", "Закрий відкрите вікно й спробуй ще раз.")
+        return
+      }
+      do {
+        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+          .appendingPathComponent("blockit-diagnostics", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("blockit-diagnostics.json")
+        try Data(report.utf8).write(to: file, options: .atomic)
+        let controller = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+        controller.popoverPresentationController?.sourceView = presenter.view
+        controller.completionWithItemsHandler = { _, _, _, error in
+          if let error = error { promise.reject("SHARE_FAILED", error.localizedDescription) }
+          else { promise.resolve(nil) }
+        }
+        presenter.present(controller, animated: true)
+      } catch { promise.reject("SHARE_FAILED", error.localizedDescription) }
+    }.runOnQueue(.main)
     AsyncFunction("setShieldProbeMode") { (mode: String) throws in
       try ScreenTimeStore.setShieldProbeMode(mode)
     }
@@ -20,18 +48,44 @@ public class ScreenTimeModule: Module {
     AsyncFunction("setProtectionOverride") { (scope: String, minutes: Int) throws in
       try ScreenTimeStore.setProtectionOverride(scope: scope, minutes: minutes)
     }
-    AsyncFunction("getDiagnostics") { () throws -> String in
+    AsyncFunction("getDiagnostics") { () async throws -> String in
       // Do not reconcile access here: inspecting a failure must preserve it.
       let grant = ScreenTimeStore.read("grant", ScreenTimeStore.Grant.self)
+      let request = ScreenTimeStore.read("request", ScreenTimeStore.Request.self)
+      let scheduled = ScreenTimeStore.read("scheduledGrant", ScreenTimeStore.ScheduledGrant.self)
+      let notifications = await UNUserNotificationCenter.current().notificationSettings()
+      let pendingNotifications = await UNUserNotificationCenter.current().pendingNotificationRequests()
+      let deliveredNotifications = await UNUserNotificationCenter.current().deliveredNotifications()
       let activities = ScreenTimeStore.center.activities.map { activity -> [String: Any] in
         let next = ScreenTimeStore.center.schedule(for: activity)?.nextInterval
-        return ["id": String(activity.rawValue.prefix(8)), "kind": activity.rawValue.contains(".expiry") ? "expiry" : "access",
+        return ["id": activity.rawValue, "kind": activity.rawValue.contains(".expiry") ? "expiry" : "access",
                 "start": next?.start.timeIntervalSince1970 ?? 0, "end": next?.end.timeIntervalSince1970 ?? 0,
                 "events": ScreenTimeStore.center.events(for: activity).count]
       }
-      let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail, "process": $0.process ?? "unknown"] as [String: Any] }
+      let traces = ScreenTimeStore.monitorTrace().map { ["time": $0.timestamp, "event": $0.event, "request": $0.request, "detail": $0.detail,
+        "process": $0.process ?? "unknown", "run": $0.run ?? "", "sequence": $0.sequence ?? 0, "build": $0.build ?? ""] as [String: Any] }
       let data: [String: Any] = ["ios": UIDevice.current.systemVersion,
         "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+        "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+        "diagnosticsEnabled": ScreenTimeStore.defaults.object(forKey: "diagnosticsEnabled") as? Bool ?? true,
+        "traceLimitPerProcess": 512,
+        "device": UIDevice.current.model, "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
+        "thermalState": ProcessInfo.processInfo.thermalState.rawValue,
+        "uptime": ProcessInfo.processInfo.systemUptime, "timezone": TimeZone.current.identifier,
+        "authorization": String(describing: AuthorizationCenter.shared.authorizationStatus),
+        "notificationAuthorization": notifications.authorizationStatus.rawValue,
+        "notificationAlertSetting": notifications.alertSetting.rawValue,
+        "notificationSoundSetting": notifications.soundSetting.rawValue,
+        "pendingNotifications": pendingNotifications.map { ["id": $0.identifier, "trigger": String(describing: $0.trigger)] },
+        "deliveredNotifications": deliveredNotifications.map { ["id": $0.request.identifier, "date": $0.date.timeIntervalSince1970] as [String: Any] },
+        "policy": ["enabled": ScreenTimeStore.policy.enabled, "seconds": ScreenTimeStore.policy.seconds, "mode": ScreenTimeStore.policy.mode],
+        "selectedCount": ScreenTimeStore.selection.applicationTokens.count,
+        "groups": ScreenTimeStore.groups.map { ["id": $0.id, "count": $0.tokens.count, "seconds": $0.seconds, "mode": $0.mode, "sessionMinutes": $0.sessionMinutes ?? 15] as [String: Any] },
+        "appRules": ScreenTimeStore.appRules.mapValues { ["seconds": $0.seconds, "mode": $0.mode, "sessionMinutes": $0.sessionMinutes ?? 15] as [String: Any] },
+        "protectionOverrides": ScreenTimeStore.protectionOverrides.mapValues { ["until": $0.until, "monitorID": $0.monitorID ?? ""] as [String: Any] },
+        "pendingRequest": ["id": request?.id ?? "", "mode": request?.mode ?? "", "createdAt": request?.createdAt ?? 0,
+          "readyAt": request?.readyAt ?? 0, "sessionMinutes": request?.sessionMinutes ?? 15],
+        "scheduledRequest": ["id": scheduled?.window.requestID ?? "", "startsAt": scheduled?.window.startsAt ?? 0, "endsAt": scheduled?.window.endsAt ?? 0],
         "supportsResponseProbe": true,
         "shieldProbeMode": ScreenTimeStore.shieldProbeMode,
         "shieldProbeCount": ScreenTimeStore.defaults.integer(forKey: "shieldProbeCount"),

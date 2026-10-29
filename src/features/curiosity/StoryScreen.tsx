@@ -3,6 +3,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentRef, type PropsWithChildren } from 'react';
 import { AccessibilityInfo, Animated, Linking, ScrollView, Text, View } from 'react-native';
 import { Action } from '@/components/protection-ui';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { findCuriosityStory } from './content';
 import { readCuriosity, toggleSavedStory } from './storage';
 import { useCuriositySession } from './session';
@@ -35,7 +36,7 @@ export default function CuriosityStoryScreen() {
   useFocusEffect(useCallback(() => { setSaved(readCuriosity().saved); }, []));
   useEffect(() => {
     let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (alive) setReduced(value); }).catch(() => {});
+    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (alive) setReduced(value); }).catch(error => diagnosticJournal.record('reduce-motion-read-error', { error }, 'warn'));
     const listener = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduced);
     return () => { alive = false; listener.remove(); };
   }, []);
@@ -47,7 +48,7 @@ export default function CuriosityStoryScreen() {
   function save() {
     if (!story) return;
     try { setSaved(toggleSavedStory(story.id)); setError(''); }
-    catch { setError('Не вдалося зберегти історію. Спробуй ще раз.'); }
+    catch (error) { diagnosticJournal.record('story-save-error', { error }, 'error'); setError('Не вдалося зберегти історію. Спробуй ще раз.'); }
   }
   if (!story) return <CuriosityShell finish={() => void session.finish()} busy={session.busy} back={back}>
     <View style={s.content}><Text style={s.title}>Історію не знайдено</Text><Text style={s.muted}>Вона могла змінитися після оновлення добірки.</Text><Action label="До добірки" onPress={back} /></View>
@@ -78,10 +79,10 @@ export default function CuriosityStoryScreen() {
           </View>)}
           <View style={s.callout}><Text style={s.heading}>Джерела</Text>
             {story.sources.map(source => <SmallButton key={source.url} label={`↗ ${source.title}`} onPress={() => {
-              Linking.openURL(source.url).catch(() => setError('Не вдалося відкрити джерело. Для цього потрібен інтернет.'));
+              Linking.openURL(source.url).catch(error => { diagnosticJournal.record('source-link-error', { error, url: source.url }, 'error'); setError('Не вдалося відкрити джерело. Для цього потрібен інтернет.'); });
             }} />)}
             <Text style={s.muted}>{story.imageAlt}</Text>
-            {story.imageKey === 'octopus' ? <SmallButton label="Фото: Nick Hobgood · CC BY-SA 3.0" onPress={() => { Linking.openURL('https://commons.wikimedia.org/wiki/File:Octopus_shell.jpg').catch(() => setError('Не вдалося відкрити сторінку фото.')); }} />
+            {story.imageKey === 'octopus' ? <SmallButton label="Фото: Nick Hobgood · CC BY-SA 3.0" onPress={() => { Linking.openURL('https://commons.wikimedia.org/wiki/File:Octopus_shell.jpg').catch(error => { diagnosticJournal.record('photo-link-error', { error }, 'error'); setError('Не вдалося відкрити сторінку фото.'); }); }} />
               : <Text style={s.muted}>Фото: Unsplash. Ілюстрація до теми, не зображення конкретного досліду.</Text>}
           </View>
         </>}

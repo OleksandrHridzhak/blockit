@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { Appearance, Platform } from 'react-native';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 
@@ -28,7 +29,7 @@ function loadPreference(): ThemePreference {
     const value = Platform.OS === 'web' && typeof localStorage !== 'undefined'
       ? localStorage.getItem(KEY) : BlockitBridge.getString(KEY);
     return value === 'light' || value === 'dark' ? value : 'system';
-  } catch { return 'system'; }
+  } catch (error) { diagnosticJournal.record('appearance-read-error', { error }, 'error'); return 'system'; }
 }
 let preference = loadPreference();
 function resolvedScheme(): ThemeScheme {

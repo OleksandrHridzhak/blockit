@@ -1,6 +1,7 @@
 import { useThemeStyles, useAppTheme, createThemeStyles } from '@/features/appearance/theme';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   Action,
@@ -40,7 +41,8 @@ export default function SelectAppsScreen() {
     try {
       savePreview({ apps: selected });
       router.replace('/');
-    } catch {
+    } catch (error) {
+      diagnosticJournal.record('selection-save-error', { error }, 'error');
       setError(
         'Не вдалося зберегти список. Перевір, чи дозволено збереження даних.'
       );

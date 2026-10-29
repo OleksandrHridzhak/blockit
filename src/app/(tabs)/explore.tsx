@@ -1,5 +1,6 @@
 import { useThemeStyles, createThemeStyles, setThemePreference, useThemeSettings, type ThemePreference } from '@/features/appearance/theme';
 import { useEffect, useState } from 'react';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { router, type Href } from 'expo-router';
 import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
 import {
@@ -90,7 +91,7 @@ export default function SettingsScreen() {
           <SegmentedControl values={['Автоматична', 'Світла', 'Темна']}
             selectedIndex={themeOptions.indexOf(preference)} onChange={index => {
               try { setThemePreference(themeOptions[index]); }
-              catch { Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
+              catch (error) { diagnosticJournal.record('appearance-save-error', { error }, 'error'); Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
             }} />
         </View>
       </ListSection>
@@ -192,7 +193,7 @@ export default function SettingsScreen() {
         <ListRow
           showSeparator={true}
           onPress={() => {
-            Linking.openURL('https://apps.apple.com/account/subscriptions').catch(() => {});
+            Linking.openURL('https://apps.apple.com/account/subscriptions').catch(error => diagnosticJournal.record('subscriptions-link-error', { error }, 'error'));
           }}
         >
           <Text style={styles.linkText}>Керувати підпискою в Apple ID</Text>

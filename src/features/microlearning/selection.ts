@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { lessons, type Lesson, type Mechanic } from './content';
 
@@ -30,7 +31,7 @@ export function readLearningProgress(): LearningProgress {
     const match = lessons.find(item => item.id === record.id && item.mechanic === record.mechanic);
     const seenIds = Array.isArray(record.seenIds) ? [...new Set(record.seenIds.filter((id): id is string => typeof id === 'string' && lessons.some(lesson => lesson.id === id)))].slice(-lessons.length) : [];
     return { last: match ? { id: match.id, mechanic: match.mechanic } : null, seenIds };
-  } catch { return empty(); }
+  } catch (error) { diagnosticJournal.record('learning-read-error', { error }, 'error'); return empty(); }
 }
 export function readLastLesson(): LastLesson | null { return readLearningProgress().last; }
 function write(progress: LearningProgress) {
@@ -38,7 +39,7 @@ function write(progress: LearningProgress) {
     const raw = JSON.stringify({ ...progress.last, seenIds: progress.seenIds });
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') localStorage.setItem(KEY, raw);
     else BlockitBridge.setString(KEY, raw);
-  } catch { /* Learning remains available if local storage fails. */ }
+  } catch (error) { diagnosticJournal.record('learning-write-error', { error }, 'error'); }
 }
 export function saveLastLesson(lesson: Lesson): void {
   const current = readLearningProgress();

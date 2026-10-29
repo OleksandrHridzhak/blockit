@@ -31,7 +31,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "appleTeamId": "2WT689Y795",
-      "buildNumber": "27"
+      "buildNumber": "28"
     },
     "android": {
       "package": "com.hridzhak.blockit",
@@ -63,6 +63,7 @@
       "reactCompiler": true
     },
     "extra": {
+      "diagnostics": true,
       "router": {
         "asyncRoutes": {
           "web": true

@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { APP_CATALOG } from '@/core/catalog';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { sessionMinutesOr } from '@/core/session-duration';
@@ -117,7 +118,8 @@ export function readPreview(): PreviewConfig {
       snoozeUntil,
       subscription: saved.subscription ?? defaultSubscription,
     };
-  } catch {
+  } catch (error) {
+    diagnosticJournal.record('preview-read-error', { error }, 'error');
     return { ...initial, apps: [], appRules: {} };
   }
 }

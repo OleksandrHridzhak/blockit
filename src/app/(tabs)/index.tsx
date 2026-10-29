@@ -1,5 +1,6 @@
 import { useThemeStyles, createThemeStyles } from '@/features/appearance/theme';
 import { router, useFocusEffect, type Href } from 'expo-router';
+import { Image } from 'expo-image';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
@@ -168,7 +169,15 @@ export default function HomeScreen() {
     <Page>
       {/* iOS Large Title Header */}
       <View style={styles.headerContainer}>
-        <Text style={ui.largeTitle}>Застосунки</Text>
+        <Text accessibilityRole="header" style={[ui.largeTitle, styles.headerTitle]}>Застосунки</Text>
+        <Image
+          source={require('@/assets/branding/blockit-mascot-shield-v1.png')}
+          style={styles.headerMascot}
+          contentFit="contain"
+          accessible={false}
+          accessibilityElementsHidden
+          alt=""
+        />
       </View>
 
       {/* Snooze indicator banner if active */}
@@ -313,8 +322,20 @@ export default function HomeScreen() {
 
 const themeStyles = createThemeStyles(() => StyleSheet.create({
   headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingHorizontal: 4,
     paddingTop: 8,
+  },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerMascot: {
+    width: 64,
+    height: 64,
+    flexShrink: 0,
   },
   snoozeBanner: {
     paddingVertical: 10,

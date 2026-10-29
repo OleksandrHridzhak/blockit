@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { BackHandler, FlatList, Pressable, Text, View } from 'react-native';
 import { Action } from '@/components/protection-ui';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { curiosityStories } from './content';
 import { readCuriosity, toggleSavedStory } from './storage';
 import { useCuriositySession } from './session';
@@ -16,7 +17,7 @@ export default function CuriosityFeedScreen() {
   const [filter, setFilter] = useState<'all' | 'saved'>('all');
   const [error, setError] = useState('');
   useFocusEffect(useCallback(() => {
-    try { setSaved(readCuriosity().saved); } catch { setError('Не вдалося прочитати збережене.'); }
+    try { setSaved(readCuriosity().saved); } catch (error) { diagnosticJournal.record('saved-stories-read-error', { error }, 'error'); setError('Не вдалося прочитати збережене.'); }
   }, []));
   useFocusEffect(useCallback(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => { void finish(); return true; });
@@ -25,7 +26,7 @@ export default function CuriosityFeedScreen() {
   const stories = filter === 'saved' ? curiosityStories.filter(story => saved.includes(story.id)) : curiosityStories;
   function save(id: string) {
     try { setSaved(toggleSavedStory(id)); setError(''); }
-    catch { setError('Не вдалося зберегти історію. Спробуй ще раз.'); }
+    catch (error) { diagnosticJournal.record('saved-stories-write-error', { error }, 'error'); setError('Не вдалося зберегти історію. Спробуй ще раз.'); }
   }
   return <CuriosityShell finish={() => void session.finish()} busy={session.busy}>
     <FlatList data={stories} keyExtractor={story => story.id} initialNumToRender={3} contentContainerStyle={s.content}

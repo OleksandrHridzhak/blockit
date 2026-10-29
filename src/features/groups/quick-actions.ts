@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { screenTime } from '@/features/screen-time/client';
 
@@ -18,7 +19,7 @@ export async function loadOverrides(demo: boolean): Promise<ProtectionOverrides>
     const value: unknown = raw ? JSON.parse(raw) : {};
     if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
     return Object.fromEntries(Object.entries(value).filter(([, until]) => typeof until === 'number' && (until === 0 || until > Date.now())));
-  } catch { return {}; }
+  } catch (error) { diagnosticJournal.record('quick-actions-read-error', { error }, 'error'); return {}; }
 }
 
 // -1: disable, 0: resume, positive: suspend for that many minutes.

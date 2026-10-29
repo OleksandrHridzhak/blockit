@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { screenTime, type AppGroup, type GroupMode } from '@/features/screen-time/client';
 
@@ -18,7 +19,7 @@ function demoGroups(): AppGroup[] {
     return Array.isArray(value) ? value.filter((group): group is AppGroup =>
       group && typeof group.id === 'string' && typeof group.name === 'string' && Array.isArray(group.appIds)
       && (Number.isInteger(group.seconds) && group.seconds >= 1 && group.seconds <= 86400) && groupModes.some(mode => mode.id === group.mode)) : [];
-  } catch { return []; }
+  } catch (error) { diagnosticJournal.record('groups-read-error', { error }, 'error'); return []; }
 }
 function writeDemo(groups: AppGroup[]) {
   const raw = JSON.stringify(groups);

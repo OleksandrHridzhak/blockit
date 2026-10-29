@@ -1,4 +1,5 @@
 import { APP_CATALOG } from '@/core/catalog';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import {
   createDefaultAppConfig,
   createInitialUsageState,
@@ -32,7 +33,8 @@ function readJson<T>(key: string, fallback: T): T {
   if (!raw) return fallback;
   try {
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (error) {
+    diagnosticJournal.record('storage-json-error', { key, error }, 'error');
     return fallback;
   }
 }
@@ -135,7 +137,8 @@ export function getWidgetSnapshot(): WidgetStatsSnapshot | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as WidgetStatsSnapshot;
-  } catch {
+  } catch (error) {
+    diagnosticJournal.record('widget-json-error', { error }, 'error');
     return null;
   }
 }

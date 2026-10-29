@@ -2,6 +2,7 @@ import { useThemeStyles, appleTheme, useAppTheme, createThemeStyles } from '@/fe
 import { type PropsWithChildren, type ReactNode } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 
 export { appleTheme } from '@/features/appearance/theme';
 
@@ -234,7 +235,7 @@ export function Action({
       accessibilityRole="button"
       accessibilityState={{ disabled, selected }}
       disabled={disabled}
-      onPress={onPress}
+      onPress={() => { diagnosticJournal.record('ui-action', { label }); onPress(); }}
       style={({ pressed }) => [
         ui.action,
         {
@@ -316,7 +317,7 @@ export function SegmentedControl({
             accessibilityRole="tab"
             accessibilityState={{ selected: isSelected }}
             disabled={disabled}
-            onPress={() => onChange(idx)}
+            onPress={() => { diagnosticJournal.record('ui-segment', { value: values[idx], index: idx }); onChange(idx); }}
             style={({ pressed }) => [
               ui.segmentedSegment,
               isSelected && ui.segmentedSegmentSelected,

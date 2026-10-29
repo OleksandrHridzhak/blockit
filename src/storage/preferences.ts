@@ -1,4 +1,5 @@
 import { Locale } from '@/i18n/strings';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../modules/blockit-bridge';
 
 export interface UserPreferences {
@@ -30,7 +31,8 @@ export function getUserPreferences(): UserPreferences {
         ? parsed.blockedDomains
         : DEFAULT_PREFS.blockedDomains,
     };
-  } catch {
+  } catch (error) {
+    diagnosticJournal.record('preferences-read-error', { error }, 'error');
     return { ...DEFAULT_PREFS };
   }
 }

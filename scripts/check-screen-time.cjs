@@ -43,6 +43,17 @@ function targets() { return Object.entries(project.pbxNativeTargetSection()).fil
     const phaseId = target.buildPhases.find(p => p.comment === 'Sources').value;
     const sources = project.hash.project.objects.PBXSourcesBuildPhase[phaseId].files;
     assert.equal(sources.length, 4, `${name} needs its entry point, shared store, access window and history reducer`);
+    const resourcePhase = target.buildPhases.find(p => p.comment === 'Resources').value;
+    const resources = project.hash.project.objects.PBXResourcesBuildPhase[resourcePhase].files;
+    assert.equal(resources.length, name === 'BlockitShield' ? 1 : 0, 'Only the shield bundles one mascot image, including after repeated plugin runs');
+    if (name === 'BlockitShield') {
+      const resource = project.pbxBuildFileSection()[resources[0].value];
+      const file = project.pbxFileReferenceSection()[resource.fileRef];
+      assert.equal(file.path.replaceAll('"', ''), 'BlockitShield/BlockitShieldMascot.png');
+      assert.equal(file.sourceTree, 'SOURCE_ROOT');
+      assert.deepEqual(fs.readFileSync(path.join(output, name, 'BlockitShieldMascot.png')),
+        fs.readFileSync(path.join(root, 'assets/branding/blockit-mascot-shield-v1.png')));
+    }
     for (const source of sources) {
       const build = project.pbxBuildFileSection()[source.value];
       const file = project.pbxFileReferenceSection()[build.fileRef];

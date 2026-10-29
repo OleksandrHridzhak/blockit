@@ -1,5 +1,7 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import type { HistoryEvent } from '@/storage/repository';
+import { instrumentDiagnosticMethods } from '@/core/diagnostic-journal';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 export type GroupMode = 'countdown' | 'reflection' | 'typing' | 'microlearning' | 'microlearning-v2';
 export interface AppGroup {
   id: string; name: string; seconds: number; mode: GroupMode; appIds: string[];
@@ -29,6 +31,9 @@ interface NativeScreenTime {
   savePolicy(enabled: boolean, seconds: number, mode: PauseMode): Promise<void>;
   pickApps(): Promise<boolean>; getPending(): Promise<PauseRequest | null>;
   getDiagnostics?(): Promise<string>;
+  setDiagnosticCapture?(enabled: boolean): Promise<void>;
+  clearDiagnosticTrace?(): Promise<void>;
+  shareDiagnosticFile?(report: string): Promise<void>;
   setShieldProbeMode?(mode: 'normal' | 'screen' | 'notification' | 'response'): Promise<void>;
   getActiveAccess?(): Promise<PauseRequest | null>;
   finish(id: string, answer: string): Promise<void>;
@@ -64,7 +69,11 @@ async function ensureMode(module: NativeScreenTime, mode: GroupMode) {
   if (mode === 'microlearning' && !(await module.getStatus()).supportsMicrolearning) throw new Error('Онови Blockit, щоб користуватися Microlearning.');
   if (mode === 'microlearning-v2' && !(await module.getStatus()).supportsMicrolearningV2) throw new Error('Онови Blockit, щоб користуватися Microlearning v2.');
 }
-export const screenTime = {
+const methods = {
+  canShareDiagnosticFile: () => Boolean(native?.shareDiagnosticFile),
+  shareDiagnosticFile: (report: string) => native?.shareDiagnosticFile?.(report) ?? Promise.reject(new Error('Поширення файлу потребує нової iOS-збірки.')),
+  setDiagnosticCapture: (enabled: boolean) => native?.setDiagnosticCapture?.(enabled) ?? Promise.resolve(),
+  clearDiagnosticTrace: () => native?.clearDiagnosticTrace?.() ?? Promise.resolve(),
   protectionOverrides: () => native?.getProtectionOverrides?.() ?? Promise.resolve({} as Record<string, number>),
   setProtectionOverride: (scope: string, minutes: number) => {
     const module = requireNative();
@@ -117,6 +126,7 @@ export const screenTime = {
   finish: (id: string, answer: string) => requireNative().finish(id, answer),
   cancel: () => requireNative().cancelRequest(), endAccess: () => requireNative().endAccess(),
 };
+export const screenTime = instrumentDiagnosticMethods(methods, diagnosticJournal);
 export function remainingSeconds(readyAt: number, now: number): number {
   return Math.max(0, Math.ceil((readyAt - now) / 1000));
 }

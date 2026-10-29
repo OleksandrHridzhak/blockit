@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../../modules/blockit-bridge';
 import { v2Lessons, type Concept, type V2Lesson } from './content';
 
@@ -42,14 +43,14 @@ export function readV2Progress(): V2Progress {
       newSinceReview: finite(value.newSinceReview) ? Math.min(1000, Math.floor(value.newSinceReview)) : 0,
       events: Array.isArray(value.events) ? value.events.filter(event => event && eventTypes.includes(event.type) && ids.has(event.lessonId) && finite(event.at)).slice(-200) : [],
     };
-  } catch { return empty(); }
+  } catch (error) { diagnosticJournal.record('learning-v2-read-error', { error }, 'error'); return empty(); }
 }
 function write(progress: V2Progress) {
   try {
     const raw = JSON.stringify(progress);
     if (Platform.OS === 'web' && typeof localStorage !== 'undefined') localStorage.setItem(KEY, raw);
     else BlockitBridge.setString(KEY, raw);
-  } catch { /* Content remains usable when local persistence is unavailable. */ }
+  } catch (error) { diagnosticJournal.record('learning-v2-write-error', { error }, 'error'); }
 }
 export function chooseV2Lesson(progress: V2Progress, now = Date.now(), random = Math.random): { lesson: V2Lesson; review: boolean } {
   const due = v2Lessons.filter(lesson => {
@@ -71,6 +72,7 @@ export function chooseV2Lesson(progress: V2Progress, now = Date.now(), random = 
   return { lesson: pool[Math.floor(random() * pool.length)] ?? v2Lessons[0], review };
 }
 export function recordV2Event(lesson: V2Lesson, type: LearningEvent, options: { now?: number; helpful?: boolean; review?: boolean } = {}): void {
+  diagnosticJournal.record('learning-v2-event', { lesson: lesson.id, type, review: options.review });
   const progress = readV2Progress();
   const now = options.now ?? Date.now();
   const card = progress.cards[lesson.id] ?? { shows: 0, lastShownAt: 0 };

@@ -47,6 +47,9 @@ module.exports = function withScreenTime(config) {
       fs.copyFileSync(path.join(sourceRoot, 'modules', 'blockit-bridge', 'ios', 'ScreenTimeStore.swift'), path.join(folder, 'ScreenTimeStore.swift'));
       fs.copyFileSync(path.join(sourceRoot, 'modules', 'blockit-bridge', 'ios', 'AccessWindow.swift'), path.join(folder, 'AccessWindow.swift'));
       fs.copyFileSync(path.join(sourceRoot, 'modules', 'blockit-bridge', 'ios', 'PauseHistory.swift'), path.join(folder, 'PauseHistory.swift'));
+      if (name === 'BlockitShield') {
+        fs.copyFileSync(path.join(sourceRoot, 'assets', 'branding', 'blockit-mascot-shield-v1.png'), path.join(folder, 'BlockitShieldMascot.png'));
+      }
       const plist = require('@expo/plist').default;
       fs.writeFileSync(path.join(folder, 'Info.plist'), plist.build({
         CFBundleDisplayName: name, CFBundleExecutable: '$(EXECUTABLE_NAME)',
@@ -59,7 +62,13 @@ module.exports = function withScreenTime(config) {
         'com.apple.developer.family-controls': true, 'com.apple.security.application-groups': [GROUP],
       }));
       const existing = Object.entries(project.pbxNativeTargetSection()).find(([key, value]) => !key.endsWith('_comment') && value.name?.replaceAll('"', '') === name);
-      if (existing) continue;
+      if (existing) {
+        if (name === 'BlockitShield' && !project.hasFile(`${name}/BlockitShieldMascot.png`)) {
+          const shieldGroup = Object.entries(project.hash.project.objects.PBXGroup).find(([key, value]) => !key.endsWith('_comment') && value.name?.replaceAll('"', '') === name)?.[0];
+          project.addResourceFile(`${name}/BlockitShieldMascot.png`, { target: existing[0], sourceTree: 'SOURCE_ROOT' }, shieldGroup ?? project.getFirstProject().firstProject.mainGroup);
+        }
+        continue;
+      }
       const target = project.addTarget(name, 'app_extension', name, `${c.ios.bundleIdentifier}.${name}`);
       const group = project.addPbxGroup([], name, name);
       project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
@@ -67,6 +76,9 @@ module.exports = function withScreenTime(config) {
       project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
       project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
       for (const file of [`${className}.swift`, 'ScreenTimeStore.swift', 'AccessWindow.swift', 'PauseHistory.swift']) project.addSourceFile(`${name}/${file}`, { target: target.uuid, sourceTree: 'SOURCE_ROOT' }, group.uuid);
+      if (name === 'BlockitShield') {
+        project.addResourceFile(`${name}/BlockitShieldMascot.png`, { target: target.uuid, sourceTree: 'SOURCE_ROOT' }, group.uuid);
+      }
       const list = project.pbxXCConfigurationList()[target.pbxNativeTarget.buildConfigurationList];
       for (const entry of list.buildConfigurations) Object.assign(project.pbxXCBuildConfigurationSection()[entry.value].buildSettings, {
         INFOPLIST_FILE: `${name}/Info.plist`, CODE_SIGN_ENTITLEMENTS: `${name}/${name}.entitlements`,
