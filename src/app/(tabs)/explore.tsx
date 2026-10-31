@@ -4,7 +4,7 @@ import { useThemeStyles, createThemeStyles, setThemePreference, useThemeSettings
 import { useEffect, useState } from 'react';
 import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { router, type Href } from 'expo-router';
-import { Alert, Linking, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Action,
   appleTheme,
@@ -31,6 +31,7 @@ export default function SettingsScreen() {
   const themeOptions: ThemePreference[] = ['system', 'light', 'dark'];
   const { view, busy, run, refresh } = useProtection();
   const [selectedDurationIndex, setSelectedDurationIndex] = useState(0);
+  const [snoozePickerOpen, setSnoozePickerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   // Expandable FAQ items state
@@ -89,69 +90,6 @@ export default function SettingsScreen() {
         <Text style={ui.largeTitle}>Параметри</Text>
       </View>
 
-      <ListSection title="ТЕМА" footer="Автоматична — як у налаштуваннях телефона.">
-        <View style={{ padding: 12 }}>
-          <ToggleGroup type="single" value={preference} className="w-full gap-2" onValueChange={value => {
-            if (!themeOptions.includes(value as ThemePreference)) return;
-            try { setThemePreference(value as ThemePreference); }
-            catch (error) { diagnosticJournal.record('appearance-save-error', { error }, 'error'); Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
-          }}>
-            {themeOptions.map((value, index) => <ToggleGroupItem key={value} value={value}
-              accessibilityLabel={`Тема: ${['Автоматична', 'Світла', 'Темна'][index]}`}
-              className="min-h-12 flex-1 rounded-xl border px-2"
-              style={{ flex: 1, borderRadius: 12, borderColor: preference === value ? palette.tint : palette.separatorSubtle, backgroundColor: preference === value ? palette.tint : palette.tertiaryBg }}>
-              <Text style={{ color: preference === value ? palette.onTint : palette.label, fontSize: 13, fontWeight: '600' }}>{['Автоматична', 'Світла', 'Темна'][index]}</Text>
-            </ToggleGroupItem>)}
-          </ToggleGroup>
-        </View>
-      </ListSection>
-
-      {/* SNOOZE ALL SECTION */}
-      <ListSection
-        title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ"
-        footer={isSnoozed ? 'Після завершення часу правила ввімкнуться автоматично.' : 'Правила автоматично відновляться після вибраного часу.'}
-      >
-        <View style={[ui.card, { padding: 16, gap: 14 }]}>
-          <View style={{ gap: 4 }}>
-            <Text style={ui.body}>{isSnoozed ? 'Захист призупинено' : 'Вимкнути обмеження'}</Text>
-            <Text style={styles.sectionSubtext}>
-              {isSnoozed
-                ? `Додатки відкриватимуться вільно до ${snoozeEndTime}.`
-                : 'Тимчасово вимкнути паузи та правила для всіх програм.'}
-            </Text>
-          </View>
-        {isSnoozed ? (
-          <Text style={styles.snoozeActiveDetail}>Залишилось приблизно {remainingMinutes} хв</Text>
-        ) : (
-          <SegmentedControl
-            values={SNOOZE_DURATIONS.map(duration => duration.label)}
-            selectedIndex={selectedDurationIndex}
-            disabled={busy}
-            onChange={setSelectedDurationIndex}
-          />
-        )}
-        {isSnoozed ? (
-          <Action
-            label="Відновити захист зараз"
-            disabled={busy}
-            onPress={handleResumeProtection}
-          />
-        ) : (
-          <Action
-            label={`Вимкнути все на ${SNOOZE_DURATIONS[selectedDurationIndex].label}`}
-            disabled={busy}
-            secondary
-            onPress={handleStartSnooze}
-          />
-        )}
-        </View>
-      </ListSection>
-
-      <ListSection title="CURIOSITY MODE" footer="Додатковий режим із цікавими історіями. Вмикається окремо в налаштуваннях потрібної групи; за замовчуванням вимкнений.">
-        <ListRow showSeparator={false} onPress={() => router.push({ pathname: '/curiosity', params: { preview: '1' } })}>
-          <Text style={styles.linkText}>Переглянути добірку</Text><Text style={styles.chevron}>›</Text>
-        </ListRow>
-      </ListSection>
       {/* SUBSCRIPTION SECTION in Apple Settings Style */}
       <ListSection
         title="ПІДПИСКА"
@@ -198,6 +136,66 @@ export default function SettingsScreen() {
         </ListRow>
       </ListSection>
 
+
+      <ListSection title="ТЕМА" footer="Автоматична — як у налаштуваннях телефона.">
+        <View style={{ padding: 12 }}>
+          <ToggleGroup type="single" value={preference} className="w-full gap-2" onValueChange={value => {
+            if (!themeOptions.includes(value as ThemePreference)) return;
+            try { setThemePreference(value as ThemePreference); }
+            catch (error) { diagnosticJournal.record('appearance-save-error', { error }, 'error'); Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
+          }}>
+            {themeOptions.map((value, index) => <ToggleGroupItem key={value} value={value}
+              accessibilityLabel={`Тема: ${['Автоматична', 'Світла', 'Темна'][index]}`}
+              className="min-h-12 flex-1 rounded-xl border px-2"
+              style={{ flex: 1, borderRadius: 12, borderColor: preference === value ? palette.tint : palette.separatorSubtle, backgroundColor: preference === value ? palette.tint : palette.tertiaryBg }}>
+              <Text style={{ color: preference === value ? palette.onTint : palette.label, fontSize: 13, fontWeight: '600' }}>{['Автоматична', 'Світла', 'Темна'][index]}</Text>
+            </ToggleGroupItem>)}
+          </ToggleGroup>
+        </View>
+      </ListSection>
+
+      {/* SNOOZE ALL SECTION */}
+      <ListSection
+        title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ"
+        footer={isSnoozed ? 'Після завершення часу правила ввімкнуться автоматично.' : 'Правила автоматично відновляться після вибраного часу.'}
+      >
+        <View style={[ui.card, { padding: 16, gap: 14 }]}>
+          <View style={{ gap: 4 }}>
+            <Text style={ui.body}>{isSnoozed ? 'Захист призупинено' : 'Вимкнути обмеження'}</Text>
+            <Text style={styles.sectionSubtext}>
+              {isSnoozed
+                ? `Додатки відкриватимуться вільно до ${snoozeEndTime}.`
+                : 'Тимчасово вимкнути паузи та правила для всіх програм.'}
+            </Text>
+          </View>
+        {isSnoozed && <Text style={styles.snoozeActiveDetail}>Залишилось приблизно {remainingMinutes} хв</Text>}
+        {isSnoozed ? (
+          <Action
+            label="Відновити захист зараз"
+            disabled={busy}
+            onPress={handleResumeProtection}
+          />
+        ) : (
+          <Action label="Вимкнути обмеження" disabled={busy} secondary onPress={() => setSnoozePickerOpen(true)} />
+        )}
+        </View>
+      </ListSection>
+
+      <Modal visible={snoozePickerOpen} transparent animationType="slide" onRequestClose={() => setSnoozePickerOpen(false)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Закрити вибір тривалості" onPress={() => setSnoozePickerOpen(false)} style={StyleSheet.absoluteFill} />
+          <View accessibilityViewIsModal style={{ backgroundColor: palette.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, gap: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Text style={[ui.title, { flex: 1 }]}>Вимкнути обмеження</Text>
+              <Pressable accessibilityRole="button" onPress={() => setSnoozePickerOpen(false)} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: palette.tint }}>Закрити</Text></Pressable>
+            </View>
+            <Text style={ui.mutedText}>Обери, на який час призупинити правила. Потім вони ввімкнуться автоматично.</Text>
+            <SegmentedControl values={SNOOZE_DURATIONS.map(duration => duration.label)} selectedIndex={selectedDurationIndex} disabled={busy} onChange={setSelectedDurationIndex} />
+            <Action label={busy ? 'Зберігаємо…' : `Вимкнути на ${SNOOZE_DURATIONS[selectedDurationIndex].label}`} disabled={busy} onPress={() => { setSnoozePickerOpen(false); handleStartSnooze(); }} />
+            <Action secondary label="Скасувати" disabled={busy} onPress={() => setSnoozePickerOpen(false)} />
+          </View>
+        </View>
+      </Modal>
       {/* FAQ SECTION */}
       <ListSection title="ЧАСТІ ЗАПИТАННЯ (FAQ)">
         <ListRow showSeparator={true} onPress={() => toggleFaq(0)}>
