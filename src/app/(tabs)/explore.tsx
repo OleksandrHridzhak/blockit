@@ -1,4 +1,6 @@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button, buttonTextVariants } from '@/components/ui/button';
 import { useAppTheme } from '@/features/appearance/theme';
 import { useThemeStyles, createThemeStyles, setThemePreference, useThemeSettings, type ThemePreference } from '@/features/appearance/theme';
 import { useEffect, useState } from 'react';
@@ -91,49 +93,32 @@ export default function SettingsScreen() {
       </View>
 
       {/* SUBSCRIPTION SECTION in Apple Settings Style */}
-      <ListSection
-        title="ПІДПИСКА"
-        footer="Керування підпискою та скасування доступні через ваш обліковий запис Apple ID."
-      >
-        <ListRow showSeparator={true}>
-          <View style={styles.subIconBadge}>
-            <Text style={{ fontSize: 18 }}>⭐</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.subTitleRow}>
-              <Text style={styles.subTitle}>Blockit Pro</Text>
-              <View style={styles.subStatusBadge}>
-                <Text style={styles.subStatusText}>АКТИВНА</Text>
+      <ListSection title="ПІДПИСКА">
+        <Card className="rounded-2xl border-0 py-0 shadow-none" style={{ backgroundColor: palette.secondaryBg, gap: 0 }}>
+          <CardHeader className="px-4 pt-4 pb-3">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={styles.subIconBadge}><Text style={{ fontSize: 18 }}>⭐</Text></View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <CardTitle className="text-lg" style={{ color: palette.label, fontSize: 18 }}>Blockit Pro</CardTitle>
+                <CardDescription className="text-sm" style={{ color: palette.secondaryLabel }}>Безлімітні застосунки та персональні налаштування</CardDescription>
               </View>
+              <View style={[styles.subStatusBadge, { backgroundColor: 'rgba(48, 209, 88, 0.15)' }]}><Text style={[styles.subStatusText, { color: palette.green }]}>АКТИВНА</Text></View>
             </View>
-            <Text style={styles.subDetail}>
-              Безлімітні додатки та персональні налаштування
-            </Text>
-          </View>
-        </ListRow>
-
-        <ListRow showSeparator={true}>
-          <View style={styles.infoRow}>
-            <Text style={styles.rowLabel}>Діє до</Text>
-            <Text style={styles.rowValue}>
-              {view?.subscription?.renewalDate ?? '26 жовтня 2027'}
-            </Text>
-          </View>
-        </ListRow>
-
-        <ListRow
-          showSeparator={true}
-          onPress={() => {
-            Linking.openURL('https://apps.apple.com/account/subscriptions').catch(error => diagnosticJournal.record('subscriptions-link-error', { error }, 'error'));
-          }}
-        >
-          <Text style={styles.linkText}>Керувати підпискою в Apple ID</Text>
-          <Text style={styles.chevron}>›</Text>
-        </ListRow>
-
-        <ListRow showSeparator={false} onPress={restorePurchases}>
-          <Text style={styles.linkText}>Відновити покупки</Text>
-        </ListRow>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <View style={[styles.infoRow, { paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderColor: palette.separatorSubtle }]}>
+              <Text style={styles.rowLabel}>Діє до</Text><Text style={styles.rowValue}>{view?.subscription?.renewalDate ?? '26 жовтня 2027'}</Text>
+            </View>
+          </CardContent>
+          <CardFooter className="flex-col items-stretch gap-2 px-4 pb-4">
+            <Button variant="outline" className="h-12 rounded-xl border-0" style={{ backgroundColor: palette.tertiaryBg }} onPress={() => { Linking.openURL('https://apps.apple.com/account/subscriptions').catch(error => diagnosticJournal.record('subscriptions-link-error', { error }, 'error')); }}>
+              <Text className={buttonTextVariants({ variant: 'outline' })} style={{ color: palette.tint, fontSize: 15 }}>Керувати підпискою в Apple ID</Text>
+            </Button>
+            <Button variant="ghost" className="h-11 rounded-xl" onPress={restorePurchases}>
+              <Text className={buttonTextVariants({ variant: 'ghost' })} style={{ color: palette.secondaryLabel, fontSize: 14 }}>Відновити покупки</Text>
+            </Button>
+          </CardFooter>
+        </Card>
       </ListSection>
 
 
