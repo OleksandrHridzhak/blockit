@@ -11,7 +11,6 @@ import {
   ListRow,
   ListSection,
   Page,
-  SegmentedControl,
   ui as sharedUI,
 } from '@/components/protection-ui';
 import { useProtection } from '@/hooks/use-protection';
@@ -107,47 +106,31 @@ export default function SettingsScreen() {
       </ListSection>
 
       {/* SNOOZE ALL SECTION */}
-      <ListSection
-        title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ"
-        footer={
-          isSnoozed
-            ? `Захист тимчасово вимкнено до ${snoozeEndTime}. Додатки відкриватимуться вільно без затримок.`
-            : 'Тимчасово вимикає всі паузи та правила для всіх програм на обраний проміжок часу.'
-        }
-      >
-        {isSnoozed ? (
-          <ListRow showSeparator={false}>
-            <View style={styles.snoozeActiveRow}>
-              <View style={styles.snoozeIconBadge}>
-                <Text style={{ fontSize: 18 }}>⏸️</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.snoozeActiveTitle}>
-                  Обмеження призупинено
-                </Text>
-                <Text style={styles.snoozeActiveDetail}>
-                  До {snoozeEndTime} · залишилось ~{remainingMinutes} хв
-                </Text>
-              </View>
-            </View>
-          </ListRow>
-        ) : (
-          <View style={{ padding: 12, gap: 12 }}>
+      <ListSection title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ">
+        <View style={[ui.card, { padding: 16, gap: 14 }]}>
+          <View style={{ gap: 4 }}>
+            <Text style={ui.body}>{isSnoozed ? 'Захист призупинено' : 'Вимкнути обмеження'}</Text>
             <Text style={styles.sectionSubtext}>
-              Оберіть час, на який вимкнути обмеження:
+              {isSnoozed
+                ? `Додатки відкриватимуться вільно до ${snoozeEndTime}.`
+                : 'Тимчасово вимкнути паузи та правила для всіх програм.'}
             </Text>
-            <SegmentedControl
-              values={SNOOZE_DURATIONS.map((d) => d.label)}
-              selectedIndex={selectedDurationIndex}
-              disabled={busy}
-              onChange={setSelectedDurationIndex}
-            />
           </View>
+        {isSnoozed ? (
+          <Text style={styles.snoozeActiveDetail}>Залишилось приблизно {remainingMinutes} хв</Text>
+        ) : (
+          <ToggleGroup type="single" value={String(selectedDurationIndex)} disabled={busy}
+            accessibilityLabel="Тривалість призупинення обмежень"
+            className="w-full gap-2"
+            onValueChange={value => { if (value !== '') setSelectedDurationIndex(Number(value)); }}>
+            {SNOOZE_DURATIONS.map((duration, index) => <ToggleGroupItem key={duration.minutes} value={String(index)}
+              accessibilityLabel={`Тривалість ${duration.label}`}
+              className="min-h-12 flex-1 rounded-xl border px-2"
+              style={{ flex: 1, borderRadius: 12, borderColor: selectedDurationIndex === index ? palette.tint : palette.separatorSubtle, backgroundColor: selectedDurationIndex === index ? palette.tint : palette.tertiaryBg }}>
+              <Text style={{ color: selectedDurationIndex === index ? palette.onTint : palette.label, fontSize: 14, fontWeight: '600' }}>{duration.label}</Text>
+            </ToggleGroupItem>)}
+          </ToggleGroup>
         )}
-      </ListSection>
-
-      {/* Snooze Action Button */}
-      <View style={{ marginTop: -8 }}>
         {isSnoozed ? (
           <Action
             label="Відновити захист зараз"
@@ -162,7 +145,11 @@ export default function SettingsScreen() {
             onPress={handleStartSnooze}
           />
         )}
-      </View>
+        </View>
+        <View style={{ marginTop: 8 }}><Text style={[ui.sectionFooter, { paddingHorizontal: 0 }]}>
+          {isSnoozed ? 'Після завершення часу правила ввімкнуться автоматично.' : 'Правила автоматично відновляться після вибраного часу.'}
+        </Text></View>
+      </ListSection>
 
       <ListSection title="CURIOSITY MODE" footer="Додатковий режим із цікавими історіями. Вмикається окремо в налаштуваннях потрібної групи; за замовчуванням вимкнений.">
         <ListRow showSeparator={false} onPress={() => router.push({ pathname: '/curiosity', params: { preview: '1' } })}>
