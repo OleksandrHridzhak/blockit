@@ -137,23 +137,6 @@ export default function SettingsScreen() {
       </ListSection>
 
 
-      <ListSection title="ТЕМА" footer="Автоматична — як у налаштуваннях телефона.">
-        <View style={{ padding: 12 }}>
-          <ToggleGroup type="single" value={preference} className="w-full gap-2" onValueChange={value => {
-            if (!themeOptions.includes(value as ThemePreference)) return;
-            try { setThemePreference(value as ThemePreference); }
-            catch (error) { diagnosticJournal.record('appearance-save-error', { error }, 'error'); Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
-          }}>
-            {themeOptions.map((value, index) => <ToggleGroupItem key={value} value={value}
-              accessibilityLabel={`Тема: ${['Автоматична', 'Світла', 'Темна'][index]}`}
-              className="min-h-12 flex-1 rounded-xl border px-2"
-              style={{ flex: 1, borderRadius: 12, borderColor: preference === value ? palette.tint : palette.separatorSubtle, backgroundColor: preference === value ? palette.tint : palette.tertiaryBg }}>
-              <Text style={{ color: preference === value ? palette.onTint : palette.label, fontSize: 13, fontWeight: '600' }}>{['Автоматична', 'Світла', 'Темна'][index]}</Text>
-            </ToggleGroupItem>)}
-          </ToggleGroup>
-        </View>
-      </ListSection>
-
       {/* SNOOZE ALL SECTION */}
       <ListSection
         title="ПРИЗУПИНЕННЯ ОБМЕЖЕНЬ"
@@ -196,6 +179,24 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <ListSection title="ТЕМА" footer="Автоматична — як у налаштуваннях телефона.">
+        <View style={{ padding: 12 }}>
+          <ToggleGroup type="single" value={preference} className="w-full gap-2" onValueChange={value => {
+            if (!themeOptions.includes(value as ThemePreference)) return;
+            try { setThemePreference(value as ThemePreference); }
+            catch (error) { diagnosticJournal.record('appearance-save-error', { error }, 'error'); Alert.alert('Не вдалося зберегти тему', 'Спробуй ще раз.'); }
+          }}>
+            {themeOptions.map((value, index) => <ToggleGroupItem key={value} value={value}
+              accessibilityLabel={`Тема: ${['Автоматична', 'Світла', 'Темна'][index]}`}
+              className="min-h-12 flex-1 rounded-xl border px-2"
+              style={{ flex: 1, borderRadius: 12, borderColor: preference === value ? palette.tint : palette.separatorSubtle, backgroundColor: preference === value ? palette.tint : palette.tertiaryBg }}>
+              <Text style={{ color: preference === value ? palette.onTint : palette.label, fontSize: 13, fontWeight: '600' }}>{['Автоматична', 'Світла', 'Темна'][index]}</Text>
+            </ToggleGroupItem>)}
+          </ToggleGroup>
+        </View>
+      </ListSection>
+
       {/* FAQ SECTION */}
       <ListSection title="ЧАСТІ ЗАПИТАННЯ (FAQ)">
         <ListRow showSeparator={true} onPress={() => toggleFaq(0)}>
