@@ -94,7 +94,7 @@ export default function SettingsScreen() {
 
       {/* SUBSCRIPTION SECTION in Apple Settings Style */}
       <ListSection title="ПІДПИСКА">
-        <Card className="rounded-2xl border-0 py-0 shadow-none" style={{ backgroundColor: palette.secondaryBg, gap: 0 }}>
+        <Card className="rounded-2xl border-0 py-0 shadow-none" style={{ backgroundColor: palette.secondaryBg, borderColor: palette.secondaryBg, gap: 0 }}>
           <CardHeader className="px-4 pt-4 pb-3">
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={styles.subIconBadge}><Text style={{ fontSize: 18 }}>⭐</Text></View>
@@ -111,11 +111,11 @@ export default function SettingsScreen() {
             </View>
           </CardContent>
           <CardFooter className="flex-col items-stretch gap-2 px-4 pb-4">
-            <Button variant="outline" className="h-12 rounded-xl border-0" style={{ backgroundColor: palette.tertiaryBg }} onPress={() => { Linking.openURL('https://apps.apple.com/account/subscriptions').catch(error => diagnosticJournal.record('subscriptions-link-error', { error }, 'error')); }}>
-              <Text className={buttonTextVariants({ variant: 'outline' })} style={{ color: palette.tint, fontSize: 15 }}>Керувати підпискою в Apple ID</Text>
+            <Button variant="default" className="h-12 rounded-xl border-0" style={{ backgroundColor: palette.tint }} onPress={() => { Linking.openURL('https://apps.apple.com/account/subscriptions').catch(error => diagnosticJournal.record('subscriptions-link-error', { error }, 'error')); }}>
+              <Text className={buttonTextVariants({ variant: 'default' })} style={{ color: palette.onTint, fontSize: 15 }}>Керувати підпискою в Apple ID</Text>
             </Button>
-            <Button variant="ghost" className="h-11 rounded-xl" onPress={restorePurchases}>
-              <Text className={buttonTextVariants({ variant: 'ghost' })} style={{ color: palette.secondaryLabel, fontSize: 14 }}>Відновити покупки</Text>
+            <Button variant="outline" className="h-11 rounded-xl border" style={{ backgroundColor: `${palette.tint}1A`, borderColor: `${palette.tint}55` }} onPress={restorePurchases}>
+              <Text className={buttonTextVariants({ variant: 'outline' })} style={{ color: palette.tint, fontSize: 14 }}>Відновити покупки</Text>
             </Button>
           </CardFooter>
         </Card>
