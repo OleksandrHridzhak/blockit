@@ -11,7 +11,15 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'blockit-screen-time-'));
 execFileSync('tar', ['-xzf', path.join(path.dirname(require.resolve('expo/package.json')), 'template.tgz'), '-C', output, 'package/ios/HelloWorld.xcodeproj/project.pbxproj']);
 const project = xcode.project(path.join(output, 'package/ios/HelloWorld.xcodeproj/project.pbxproj'));
 project.parseSync();
-const config = require('../plugins/withScreenTime')({ name: 'Blockit', slug: 'blockit', version: '0.2.0', ios: { bundleIdentifier: 'com.hridzhak.blockit' } });
+const appConfig = require('../app.json').expo;
+const config = require('../plugins/withScreenTime')(structuredClone(appConfig));
+const extensionCredentials = config.extra.eas.build.experimental.ios.appExtensions;
+assert.equal(extensionCredentials.length, 3);
+for (const extension of extensionCredentials) {
+  assert.equal(extension.bundleIdentifier, `${appConfig.ios.bundleIdentifier}.${extension.targetName}`);
+  assert.equal(extension.entitlements['com.apple.developer.family-controls'], true);
+  assert.deepEqual(extension.entitlements['com.apple.security.application-groups'], ['group.com.hridzhak.blockit.2WT689Y795']);
+}
 const modRequest = { projectRoot: root, platformProjectRoot: output, projectName: 'HelloWorld', platform: 'ios' };
 function targets() { return Object.entries(project.pbxNativeTargetSection()).filter(([key]) => !key.endsWith('_comment')); }
 (async () => {
@@ -21,7 +29,7 @@ function targets() { return Object.entries(project.pbxNativeTargetSection()).fil
   assert.equal(targets().length, 4, 'One host and exactly three extensions after two runs');
   const ent = await config.mods.ios.entitlements({ ...config, modRequest, modResults: {} });
   assert.equal(ent.modResults['com.apple.developer.family-controls'], true);
-  assert.deepEqual(ent.modResults['com.apple.security.application-groups'], ['group.com.hridzhak.blockit']);
+  assert.deepEqual(ent.modResults['com.apple.security.application-groups'], ['group.com.hridzhak.blockit.2WT689Y795']);
   for (const [id, target] of targets().slice(1)) {
     const name = target.name.replaceAll('"', '');
     const info = plist.parse(fs.readFileSync(path.join(output, name, 'Info.plist'), 'utf8'));
@@ -34,7 +42,18 @@ function targets() { return Object.entries(project.pbxNativeTargetSection()).fil
     }
     const phaseId = target.buildPhases.find(p => p.comment === 'Sources').value;
     const sources = project.hash.project.objects.PBXSourcesBuildPhase[phaseId].files;
-    assert.equal(sources.length, 2, `${name} needs both its entry point and shared store`);
+    assert.equal(sources.length, 4, `${name} needs its entry point, shared store, access window and history reducer`);
+    const resourcePhase = target.buildPhases.find(p => p.comment === 'Resources').value;
+    const resources = project.hash.project.objects.PBXResourcesBuildPhase[resourcePhase].files;
+    assert.equal(resources.length, name === 'BlockitShield' ? 1 : 0, 'Only the shield bundles one mascot image, including after repeated plugin runs');
+    if (name === 'BlockitShield') {
+      const resource = project.pbxBuildFileSection()[resources[0].value];
+      const file = project.pbxFileReferenceSection()[resource.fileRef];
+      assert.equal(file.path.replaceAll('"', ''), 'BlockitShield/BlockitShieldMascot.png');
+      assert.equal(file.sourceTree, 'SOURCE_ROOT');
+      assert.deepEqual(fs.readFileSync(path.join(output, name, 'BlockitShieldMascot.png')),
+        fs.readFileSync(path.join(root, 'assets/branding/blockit-mascot-shield-v1.png')));
+    }
     for (const source of sources) {
       const build = project.pbxBuildFileSection()[source.value];
       const file = project.pbxFileReferenceSection()[build.fileRef];
@@ -54,4 +73,5 @@ function targets() { return Object.entries(project.pbxNativeTargetSection()).fil
   console.log('PASS: three embedded extension targets, source paths, dependencies, capabilities, idempotence, project serialization.');
   console.log(`Generated inspection files: ${output}`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
 

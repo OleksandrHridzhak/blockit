@@ -3,12 +3,10 @@
  * https://docs.expo.dev/guides/color-schemes/
  */
 
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAppTheme } from '@/features/appearance/theme';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? 'dark' : 'light';
-
-  return Colors[theme];
+  const palette = useAppTheme();
+  return { text: palette.label, background: palette.bg, backgroundElement: palette.secondaryBg,
+    backgroundSelected: palette.fill, textSecondary: palette.secondaryLabel };
 }

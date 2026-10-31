@@ -1,0 +1,17 @@
+node_modules/
+.git/
+.expo/
+coverage/
+dist/
+dist-artifacts/
+web-build/
+web-preview/
+outputs/
+*.ipa
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.env*
+/ios/
+/android/

@@ -28,10 +28,13 @@ export function computeAnalyticsSummary(
 ): AnalyticsSummary {
   const bucketsByDay = new Map<string, DailyStatBucket>();
   const last7Days: DailyStatBucket[] = [];
+  const localToday = getLocalTimeParts(nowMs, timeZone).dayKey;
+  const calendarAnchor = Date.parse(`${localToday}T12:00:00Z`);
 
   for (let offset = 6; offset >= 0; offset--) {
-    const ts = nowMs - offset * 24 * 60 * 60 * 1000;
-    const parts = getLocalTimeParts(ts, timeZone);
+    // Step through calendar dates rather than elapsed local hours across DST.
+    const ts = calendarAnchor - offset * 24 * 60 * 60 * 1000;
+    const parts = getLocalTimeParts(ts, 'UTC');
     if (!bucketsByDay.has(parts.dayKey)) {
       const bucket: DailyStatBucket = {
         dayKey: parts.dayKey,
