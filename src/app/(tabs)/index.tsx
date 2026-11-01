@@ -315,7 +315,13 @@ export default function HomeScreen() {
         </ListRow>
       </ListSection>
       {quickPanel && <QuickActionsSheet key={`${quickPanel.target.scope}:${quickPanel.mode}`} panel={quickPanel} onClose={() => setQuickPanel(null)}
-        onApply={minutes => applyQuickAction(quickPanel.target, minutes)} onRemove={() => removeQuickTarget(quickPanel.target)} />}
+        onApply={minutes => applyQuickAction(quickPanel.target, minutes)} onRemove={() => removeQuickTarget(quickPanel.target)}
+        groups={view?.demo ? groups : []}
+        onCreateGroup={view?.demo && quickPanel.target.kind === 'app' ? () => router.push({ pathname: '/group', params: { appId: quickPanel.target.id } }) : undefined}
+        onAddToGroup={view?.demo && quickPanel.target.kind === 'app' ? async groupId => {
+          await groupsService.addPreviewAppToGroup(quickPanel.target.id, groupId);
+          await reloadQuickActions();
+        } : undefined} />}
     </Page>
   );
 }

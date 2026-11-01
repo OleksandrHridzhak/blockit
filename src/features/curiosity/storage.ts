@@ -38,6 +38,12 @@ export function setGroupCuriosity(groupId: string, enabled: boolean) {
   const settings = readCuriosity();
   write({ ...settings, groups: { ...settings.groups, [groupId]: enabled } });
 }
+export function clearAppCuriosity(appId: string) {
+  const settings = readCuriosity();
+  const groups = { ...settings.groups };
+  delete groups[`app:${appId}`];
+  write({ ...settings, groups });
+}
 export function toggleSavedStory(id: string): string[] {
   const settings = readCuriosity();
   const saved = settings.saved.includes(id) ? settings.saved.filter(value => value !== id) : [...settings.saved, id];

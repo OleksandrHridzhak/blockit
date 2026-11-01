@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { diagnosticJournal } from '@/features/diagnostics/journal';
 import { BlockitBridge } from '../../../modules/blockit-bridge';
 import { screenTime, type AppGroup, type GroupMode } from '@/features/screen-time/client';
+import { removeAppFromPreview } from '@/features/preview/store';
+import { clearAppCuriosity } from '@/features/curiosity/storage';
 
 export const groupModes: { id: GroupMode; title: string; detail: string }[] = [
   { id: 'countdown', title: 'Тільки пауза', detail: 'Після паузи доступ відкриється автоматично.' },
@@ -42,5 +44,13 @@ export const groupsService = {
   async remove(id: string, demo: boolean) {
     if (!demo) await screenTime.deleteGroup(id);
     else writeDemo(demoGroups().filter(group => group.id !== id));
+  },
+  async addPreviewAppToGroup(appId: string, groupId: string) {
+    const groups = demoGroups();
+    const group = groups.find(item => item.id === groupId);
+    if (!group) throw new Error('Цю групу вже видалено. Онови список і спробуй ще раз.');
+    await this.save({ ...group, appIds: [...new Set([...group.appIds, appId])] }, true);
+    removeAppFromPreview(appId);
+    clearAppCuriosity(appId);
   },
 };

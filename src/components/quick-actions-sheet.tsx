@@ -5,11 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Action, ListRow, ListSection, ui as sharedUI } from './protection-ui';
 import { parseSessionMinutes } from '@/core/session-duration';
 import type { QuickTarget } from '@/features/groups/quick-actions';
+import type { AppGroup } from '@/features/screen-time/client';
 
 export type QuickPanel = { target: QuickTarget; mode: 'pause' | 'all' | 'delete'; suspended: boolean };
 
-export function QuickActionsSheet({ panel, onClose, onApply, onRemove }: {
+export function QuickActionsSheet({ panel, onClose, onApply, onRemove, groups = [], onCreateGroup, onAddToGroup }: {
   panel: QuickPanel; onClose: () => void; onApply: (minutes: number) => Promise<void>; onRemove: () => Promise<void>;
+  groups?: AppGroup[]; onCreateGroup?: () => void; onAddToGroup?: (groupId: string) => Promise<void>;
 }) {
   const appleTheme = useAppTheme();
   const ui = useThemeStyles(sharedUI);
@@ -17,8 +19,11 @@ export function QuickActionsSheet({ panel, onClose, onApply, onRemove }: {
   const [confirmDelete, setConfirmDelete] = useState(panel.mode === 'delete');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [groupPicker, setGroupPicker] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
   const lock = useRef(false);
   const minutes = parseSessionMinutes(text);
+  const availableGroups = groups.filter(group => !group.appIds.includes(panel.target.id));
   async function perform(task: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
@@ -32,11 +37,23 @@ export function QuickActionsSheet({ panel, onClose, onApply, onRemove }: {
       <SafeAreaView edges={['bottom']} accessibilityViewIsModal style={{ backgroundColor: appleTheme.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' }}>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} keyboardShouldPersistTaps="handled">
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Text style={[ui.title, { flex: 1 }]}>{confirmDelete ? 'Видалити?' : 'Швидкі дії'}</Text>
+            <Text style={[ui.title, { flex: 1 }]}>{confirmDelete ? 'Видалити?' : groupPicker ? 'Додати в групу' : 'Швидкі дії'}</Text>
             <Pressable accessibilityRole="button" disabled={busy} onPress={onClose} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={{ color: appleTheme.tint }}>Закрити</Text></Pressable>
           </View>
           <Text style={ui.body}>{panel.target.name}</Text>
-          {confirmDelete ? <>
+          {groupPicker ? <>
+            <Text style={ui.mutedText}>У групі застосунок використовуватиме спільне правило. Його індивідуальні налаштування буде скинуто.</Text>
+            <Action secondary label="Створити нову групу" disabled={busy} onPress={() => { onClose(); onCreateGroup?.(); }} />
+            {availableGroups.length > 0 && <ListSection title="НАЯВНІ ГРУПИ">
+              {availableGroups.map(group => <ListRow key={group.id} disabled={busy} onPress={() => setSelectedGroupId(group.id)}>
+                <Text style={[ui.body, { flex: 1 }]}>{group.name}</Text>
+                {selectedGroupId === group.id && <Text accessibilityLabel="Вибрано" style={{ color: appleTheme.tint }}>✓</Text>}
+              </ListRow>)}
+            </ListSection>}
+            {availableGroups.length === 0 && <Text style={ui.mutedText}>Поки немає інших груп. Створи нову для цього застосунку.</Text>}
+            {selectedGroupId !== '' && <Action label={busy ? 'Додаємо…' : `Додати в «${groups.find(group => group.id === selectedGroupId)?.name ?? 'групу'}»`} disabled={busy} onPress={() => onAddToGroup && void perform(() => onAddToGroup(selectedGroupId))} />}
+            <Action secondary label="Назад" disabled={busy} onPress={() => { setGroupPicker(false); setSelectedGroupId(''); }} />
+          </> : confirmDelete ? <>
             <Text style={ui.mutedText}>{panel.target.kind === 'group' ? 'Групу буде видалено, а блокування її застосунків припиниться. Історія залишиться.' : 'Застосунок буде прибрано зі списку блокування. Історія залишиться.'}</Text>
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => void perform(onRemove)} style={{ backgroundColor: '#762A30', padding: 16, borderRadius: 12 }}>
               <Text style={[ui.body, { textAlign: 'center' }]}>{busy ? 'Видаляємо…' : 'Видалити'}</Text>
@@ -56,6 +73,7 @@ export function QuickActionsSheet({ panel, onClose, onApply, onRemove }: {
             {panel.mode === 'all' && <ListSection>
               {panel.suspended && <ListRow disabled={busy} onPress={() => void perform(() => onApply(0))}><Text style={ui.body}>Відновити захист</Text></ListRow>}
               <ListRow disabled={busy} onPress={() => void perform(() => onApply(-1))}><Text style={ui.body}>Вимкнути до ручного ввімкнення</Text></ListRow>
+              {panel.target.kind === 'app' && onCreateGroup && onAddToGroup && <ListRow disabled={busy} showSeparator={false} onPress={() => { setGroupPicker(true); setError(''); }}><Text style={[ui.body, { color: appleTheme.tint }]}>Додати в групу…</Text></ListRow>}
               <ListRow disabled={busy} showSeparator={false} onPress={() => setConfirmDelete(true)}><Text style={{ color: appleTheme.red, fontSize: 17 }}>Видалити зі списку</Text></ListRow>
             </ListSection>}
           </>}
